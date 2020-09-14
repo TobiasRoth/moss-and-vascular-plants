@@ -22,7 +22,7 @@ theme_set(
       legend.background = element_rect(colour = "white"))
 )
 
-# Read and prepare data
+# Read data
 dat <- read_csv("Data-raw/dat.csv")
 surveys <- read_csv("Data-raw/surveys.csv") 
 
@@ -30,6 +30,41 @@ surveys <- read_csv("Data-raw/surveys.csv")
 moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
 plref <- -1 * coef(lm(T_pl_mean ~ elevation, data = dat))[2]
 tref <- 0.53 / (0.6 / 100)
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Termophilisation accross all plots ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+gls(
+  T_mo_trend ~ 1, weights = varPower(form = ~ SR_mo_mean), 
+  data = dat %>% filter(!is.na(T_mo_trend))) %>% 
+  summary
+gls(
+  T_pl_trend ~ 1, weights = varPower(form = ~ SR_pl_mean), 
+  data = dat %>% filter(!is.na(T_pl_trend))) %>% 
+  summary
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Main model on thermophilisation rate (Hyp: i- iii) ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Prepare data
+d <- dat %>%
+  dplyr::select(aID_STAO, ele, land_use, T_mo_trend, T_pl_trend) %>% 
+  gather("vascpl", "thermo", -c(aID_STAO, ele, land_use)) %>% 
+  mutate(vascpl = as.integer(factor(vascpl)) - 1) %>% 
+  left_join(
+    dat %>%
+      dplyr::select(aID_STAO, SR_mo_mean, SR_pl_mean) %>% 
+      gather("vascpl", "SR", -c(aID_STAO)) %>% 
+      mutate(vascpl = as.integer(factor(vascpl)) - 1)) %>% 
+  filter(!is.na(thermo)) %>% 
+  mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
+
+# Apply main model
+lme(thermo ~ vascpl + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d) %>% 
+  summary 
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure ----
@@ -84,10 +119,11 @@ d %>%
   ggplot(aes(x = year, y = T, ymin = T_lo, ymax = T_up, linetype = lu, col = lu, fill = lu)) +
   geom_line(lty = 1, lwd = 1) +
   geom_ribbon(alpha = 0.5, lty = "blank") +
-  labs(x = "Study period", y = "Mean temperature value") +
+  scale_y_continuous(breaks = seq(0,5,0.1)) +
+  labs(x = "Study period", y = "Temperature affinity of species communities") +
   scale_fill_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
-  facet_rep_grid(eleband ~ sg, scales = "free_y") +
+  facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") +
   theme(legend.position="bottom")
 ggsave("Figures/main-figure.pdf", height = 8, width = 5)
 
@@ -207,79 +243,135 @@ pdf("Figures/Elevational-shifts.pdf", width = 10, height = 3.5)
 multiplot(forest, grassland, unused, cols = 3)
 dev.off()
 
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Termophilisation accross all plots and among land-use types----
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Temporal trends in alpine communities of Termo., Meso- and Cryophilic species numbers ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-# Across all plots
-gls(
-  T_mo_trend ~ 1, weights = varPower(form = ~ SR_mo_mean), 
-  data = dat %>% filter(!is.na(T_mo_trend))) %>% 
-  summary
-gls(
-  T_pl_trend ~ 1, weights = varPower(form = ~ SR_pl_mean), 
-  data = dat %>% filter(!is.na(T_pl_trend))) %>% 
-  summary
-
-# Differences between land-use types
-gls(
-  T_mo_trend ~ ele + land_use, weights = varPower(form = ~ SR_mo_mean), 
-  data = dat %>% filter(!is.na(T_mo_trend))) %>% 
-  anova
-gls(
-  T_pl_trend ~ ele + land_use, weights = varPower(form = ~ SR_pl_mean), 
-  data = dat %>% filter(!is.na(T_pl_trend))) %>% 
-  anova
-
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Termophilisation accross elevation----
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+d <- surveys %>% filter(HS == "alpine")
 
 # Bryophytes
-mod <- gls(
-  T_mo_trend ~ ele, weights = varPower(form = ~ SR_mo_mean), 
-  data = dat %>% filter(!is.na(T_mo_trend)))
-summary(mod)
-pr <- predict(mod, newdata = data.frame(ele = (c(500, 2000) -500) / 200)) %>% round(3)
-round(pr / moref, 0)
-round(pr / moref / tref, 3) 
+glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
 
 # Vascular plants
-mod <- gls(
-  T_pl_trend ~ ele, weights = varPower(form = ~ SR_pl_mean), 
-  data = dat %>% filter(!is.na(T_pl_trend)))
-summary(mod)
-pr <- predict(mod, newdata = data.frame(ele = (c(500, 2000) -500) / 200)) %>% round(3)
-round(pr / plref, 0)
-round(pr / plref / tref, 3) 
+glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Difference between bryophytes and vascular plants ----
+# Termophilisation between life strategies (Hyp iv)----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Prepare data
+d <- dat %>%
+  dplyr::select(aID_STAO, ele, land_use, T_mo_sh_trend, T_mo_lo_trend) %>% 
+  gather("strategy", "thermo", -c(aID_STAO, ele, land_use)) %>% 
+  mutate(strategy = factor(strategy, levels = c("T_mo_sh_trend", "T_mo_lo_trend"))) %>% 
+  left_join(dat %>% dplyr::select(aID_STAO, SR_mo_mean)) %>% 
+  filter(!is.na(thermo)) %>% 
+  mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
+
+# Apply main model
+lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) %>% 
+  summary 
+lme(thermo ~ strategy, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) %>% 
+  summary 
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Plot: Short and long-lived species ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#short-lived species
+d.res_sh <- dat %>% 
+  group_by(HS) %>% 
+  dplyr::summarise(
+    mean = mean(T_mo_sh_trend, na.rm = TRUE),
+    lo = t.test(T_mo_sh_trend)$conf.int[1],
+    up = t.test(T_mo_sh_trend)$conf.int[2],
+    gr = "short-lived species") %>% 
+  rbind(
+    tibble(
+      HS = "overall",
+      mean = mean(dat$T_mo_sh_trend, na.rm = TRUE),
+      lo = t.test(dat$T_mo_sh_trend)$conf.int[1],
+      up = t.test(dat$T_mo_sh_trend)$conf.int[2],
+      gr = "short-lived species")
+  )
+
+#long-lived species  
+d.res_lo <- dat %>% 
+  group_by(HS) %>% 
+  dplyr::summarise(
+    mean = mean(T_mo_lo_trend, na.rm = TRUE),
+    lo = t.test(T_mo_lo_trend)$conf.int[1],
+    up = t.test(T_mo_lo_trend)$conf.int[2],
+    gr = "long-lived species")%>% 
+  rbind(
+    tibble(
+      HS = "overall",
+      mean = mean(dat$T_mo_lo_trend, na.rm = TRUE),
+      lo = t.test(dat$T_mo_lo_trend)$conf.int[1],
+      up = t.test(dat$T_mo_lo_trend)$conf.int[2],
+      gr = "long-lived species")
+  )
+
+# Combine results of short- and long-lived spcies
+d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
+d.res <- d.res %>% mutate(
+  HS = factor(HS, levels = c("overall", "colline", "montane", "subalpine", "alpine")),
+  gr = factor(gr, levels = c("short-lived species", "long-lived species"))) 
+
+#Graphics
+ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
+  labs(
+    x = "",
+    y = "Thermophilisation rate",
+    title = ""
+  ) +
+  theme(legend.position="bottom")
+ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 5, width = 8)
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Linear models: Short and long-lived species ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
 dd <- dat %>% 
   transmute(
-    T_trend = T_mo_trend,
+    T_trend = T_mo_sh_trend,
     SR = SR_mo_mean,
     ele = ele,
     HS = HS,
     aID_STAO = aID_STAO,
-    bryo = 1
+    short = 1
   ) %>% 
   rbind(
     dat %>% 
       transmute(
-        T_trend = T_pl_trend,
-        SR = SR_pl_mean,
+        T_trend = T_mo_lo_trend,
+        SR = SR_mo_mean,
         ele = ele,
         HS = HS,
         aID_STAO = aID_STAO,
-        bryo = 0
+        short = 0
       )
   ) %>% 
   filter(!is.na(T_trend))
-lme(T_trend ~ bryo, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = dd) %>% 
-  anova
-lme(T_trend ~ ele * bryo, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = dd) %>% 
+
+# Apply models
+lme(T_trend ~ short, random = ~ 1 | aID_STAO, data = dd) %>% 
   summary
+lme(T_trend ~ short, random = ~ 1 | aID_STAO, 
+    data = dd %>% filter(HS == "alpine")) %>% 
+  anova
+
+# Notional elevational shifts
+shref <- -1 * coef(lm(T_mo_sh_mean ~ elevation, data = dat))[2]
+loref <- -1 * coef(lm(T_mo_lo_mean ~ elevation, data = dat))[2]
+moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
+d.res_sh[d.res_sh$HS == "alpine", "mean"] / moref
+d.res_lo[d.res_lo$HS == "alpine", "mean"] / moref
