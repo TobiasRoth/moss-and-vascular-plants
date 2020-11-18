@@ -11,6 +11,7 @@ library(kableExtra)
 library(BDM)
 library(simba)
 library(raster)
+library(readxl)
 
 # Connection to data base
 db <- src_sqlite(path = "DB/DB_BDM_2020_07_01.db", create = FALSE)
@@ -35,7 +36,8 @@ surveys <-
     aID_STAO = aID_STAO, 
     year = yearP,
     yr = (yearP - 2010) / 10,
-    land_use = HN) %>% 
+    land_use = HN,
+    Delarze = as.integer(Delarze1)) %>% 
   
   # Add site data:
   left_join(
@@ -80,6 +82,18 @@ surveys <-
   replace_na(list(AZ_pl = 0, AZ_pl_Termo = 0, AZ_pl_Meso = 0, AZ_pl_Cryo = 0,
                   AZ_mo = 0, AZ_mo_Termo = 0, AZ_mo_Meso = 0, AZ_mo_Cryo = 0, AZ_mo_sh = 0, AZ_mo_lo = 0)) 
 
+# Add name of delarze habitat type
+surveys <- surveys %>% 
+  left_join(
+    read_excel("DB/Teil_II-UV-1709-NPA_NPL-DFI_DigitaleListe_Lebensraeume.xlsx", skip = 9) %>% 
+      transmute(
+        Ecosystem = `Ecosystem (Deusch)`,
+        Delarze = str_remove_all(Typo_CH, pattern = "[.]") %>% str_sub(1, 3) %>% as.integer(),
+        Delarze_Name = Deutsch) %>% 
+      group_by(Ecosystem, Delarze) %>% 
+      dplyr::summarise(Delarze_Name = first(Delarze_Name))
+  )
+
 # Rename land-use types
 surveys$land_use[surveys$land_use == "Nicht genutzte Flaechen"] <- "unused"
 surveys$land_use[surveys$land_use == "Alpweiden"] <- "grassland"
@@ -91,25 +105,47 @@ surveys$HS[surveys$HS == "kollin"] <- "colline"
 surveys$HS[surveys$HS == "montan"] <- "montane"
 surveys$HS[surveys$HS == "subalpin"] <- "subalpine"
 surveys$HS[surveys$HS == "alpin"] <- "alpine"
-
-# Remove surveys with land_use = unused in the colline, montane and subalpine zone
-# These are special cases (e.g. gravel pits, waste lands) and results can hardly
-# be interpreted.
-surveys <- surveys %>% 
-  filter(!(land_use == "unused" & HS == "colline")) %>% 
-  filter(!(land_use == "unused" & HS == "montane")) %>% 
-  filter(!(land_use == "unused" & HS == "subalpine"))
+surveys$HS <- factor(surveys$HS, levels = c("colline", "montane", "subalpine", "alpine"))
 
 # Remove 1 outlier (Plot with 1 cryophilous bryophyte species at 358 asl, in the
 # floodplain of the Maggia river, the moss presumbably has been floated from
 # further above)
 surveys <- surveys[surveys$aID_KD!=3090399990,]
 
-# Remove sites with less than 3 surveys
+# Remove special habitat types from unused land use type (gravel pits, Adlerfarnflur, Hochmoor)
+exclude <- c("3180685497", "3337759823", "380195001", "97131301", "3136263783", "3293704708", 
+             "3368207749", "486553630", "3232254918", "360674069", "518802970",
+             "609876239", "3108478857", "613235264", "3117032614")
+surveys <- surveys %>% 
+  dplyr::filter(is.na(match(aID_KD, exclude))) 
+
+# Correct land-use types
+surveys$land_use[surveys$aID_STAO == 659182] <- "forest"
+surveys$land_use[surveys$aID_STAO == 557138] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 569206] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 695222] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 593130] <- "unused"
+surveys$land_use[surveys$aID_STAO == 605114] <- "unused"
+surveys$land_use[surveys$aID_STAO == 665154] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 695170] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 749150] <- "grassland"
+surveys$land_use[surveys$aID_STAO == 785198] <- "unused"
+surveys$land_use[surveys$aID_STAO == 827182] <- "unused"
+
+# Remove plot with no species recorded
+surveys <- surveys %>% 
+  filter(aID_STAO != "797174")
+
+# Select sites with at least 3 surveys and no landuse change
 ausw <- surveys %>% 
   group_by(aID_STAO) %>% 
-  dplyr::summarise(nsurveys = n()) %>% 
-  filter(nsurveys >= 3)
+  dplyr::summarise(
+    n = n(),
+    n_lut = n_distinct(land_use),
+    n_Pl = sum(!is.na(T_pl)),
+    n_Mo = sum(!is.na(T_mo))
+  ) %>% 
+  filter(n >= 3 & n_lut == 1)
 surveys <- surveys %>% 
   filter(!is.na(match(aID_STAO, ausw$aID_STAO)))
 
@@ -177,7 +213,6 @@ dat <- surveys %>%
   group_by(aID_STAO) %>% 
   dplyr::summarise(
     elevation = mean(elevation),
-    ele = (mean(elevation) - 500) / 100,
     HS = first(HS),
     land_use = first(land_use),
     N_surveys = n(),
@@ -186,6 +221,8 @@ dat <- surveys %>%
     T_pl_mean = mean(T_pl, na.rm = TRUE),
     T_pl_trend = get_trend(T_pl, year),
     SR_mo_mean = mean(AZ_mo, na.rm = TRUE),
+    SR_mo_sh_mean = mean(AZ_mo_sh, na.rm = TRUE),
+    SR_mo_lo_mean = mean(AZ_mo_lo, na.rm = TRUE),
     SR_mo_trend = get_trend(AZ_mo, year),
     T_mo_mean = mean(T_mo, na.rm = TRUE),
     T_mo_sh_mean = mean(T_mo_sh, na.rm = TRUE),
@@ -231,6 +268,9 @@ tbl(db, "STICHPROBE_Z9") %>%
 # Number of studied plots
 dat %>% nrow
 
+# Number of plots in the nival zone
+sum(dat$elevation >= 2800)
+
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Descriptive statistics (Results) ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -238,11 +278,10 @@ dat %>% nrow
 # Number of surveys 
 mean(dat$N_surveys) %>% round(1)
 sd(dat$N_surveys) %>% round(1)
-mean(dat$N_surveys < 3) %>% round(3)
 nrow(surveys)
 
 # Total number of recorded species
- n_distinct(moss$aID_SP)
+n_distinct(moss$aID_SP)
 n_distinct(plants$aID_SP)
 
 # Plot averages: species richness
@@ -276,45 +315,11 @@ mean(!is.na(plants$T))
 
 # Proportion of sites with no estimates for thermophilsation
 mean(is.na(dat$T_mo_trend))
- mean(is.na(dat$T_pl_trend))
+mean(is.na(dat$T_pl_trend))
 
 # Number of sites with estimates of thermophilsation
 sum(!is.na(dat$T_mo_trend))
 sum(!is.na(dat$T_pl_trend))
-
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Table with descriptive statistics ----
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-dat %>% 
-  # filter(!(land_use == "forest" & HS == "alpine")) %>% 
-  group_by(`Elevational zone` = HS, `Land use type` = land_use) %>%
-  dplyr::summarise(
-    `Number of plots` = n(),
-    `Elevation (m)` = mean(elevation),
-    `Species richness bryophytes` = paste0(round(mean(SR_mo_mean), 1), " ± ", round(sd(SR_mo_mean), 1)),
-    `Species richness vascular plants` = paste0(round(mean(SR_pl_mean), 1), " ± ", round(sd(SR_pl_mean), 1)),
-    `Tempera-ture affinity bryophytes` = paste0(round(mean(T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(T_mo_mean, na.rm = TRUE), 2)),
-    `Tempera-ture affinity vascular plants` = paste0(round(mean(T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(T_pl_mean, na.rm = TRUE), 2))
-  ) %>% 
-  rbind(
-    tibble(
-      `Elevational zone` = "overall", 
-      `Land use type` = "-",
-      `Number of plots` = nrow(dat),
-      `Elevation (m)` = mean(dat$elevation),
-      `Species richness bryophytes` = paste0(round(mean(dat$SR_mo_mean), 1), " ± ", round(sd(dat$SR_mo_mean), 1)),
-      `Species richness vascular plants` = paste0(round(mean(dat$SR_pl_mean), 1), " ± ", round(sd(dat$SR_pl_mean), 1)),
-      `Tempera-ture affinity bryophytes` = paste0(round(mean(dat$T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_mo_mean, na.rm = TRUE), 2)),
-      `Tempera-ture affinity vascular plants` = paste0(round(mean(dat$T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_pl_mean, na.rm = TRUE), 2))) 
-  ) %>% 
-  mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
-  arrange(`Elevational zone`) %>% 
-  kable(
-    digits = 0,
-    align = c("l", "l", rep("r", 4)),
-    booktabs = T) %>% 
-  kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Make map with location of study plots ----
@@ -335,7 +340,7 @@ owncol <- rep("green", nrow(dat))
 owncol[dat$land_use == "grassland"] <- "orange"
 owncol[dat$land_use == "unused"] <- "white"
 
-pdf("Figures/Map-with-study-plots.pdf", width = 6, height = 4)
+pdf("Figures/Map-with-study-plots.pdf", width = 7, height = 4.1)
 par(mar = c(0,0,2,0))
 plot(NA, xlim = c(490000, 840000), ylim = c(60000, 300000), type = "n", axes = FALSE, asp = 1)
 plot(ch, add =TRUE)
@@ -350,8 +355,8 @@ lines(x=c(xx, xx), y=c(yy, yy+2000))
 lines(x=c(xx+50000, xx+50000), y=c(yy, yy+2000))
 text(xx+25000, yy-5000, "50 km", cex=0.7)
 legend(
-  765000, yy + 34000, bty = "n",
-  legend = c("forest", "grassland", "unused"), 
+  740000, yy + 34000, bty = "n",
+  legend = c("forest", "grassland", "unmanaged open areas"), 
   pch = 21,
   pt.bg = c("green", "orange", "white"))
 dev.off()
@@ -365,6 +370,6 @@ surveys <- surveys[, -1]
 dat$aID_STAO <- 1:nrow(dat)
 
 # Save data
-write_csv(surveys, path = "Data-raw/surveys.csv")
-write_csv(dat, path = "Data-raw/dat.csv")
+write_csv(surveys, file = "Data-raw/surveys.csv")
+write_csv(dat, file = "Data-raw/dat.csv")
 

@@ -10,6 +10,7 @@ library(Rmisc)
 library(nlme)
 library(arm)
 library(lemon)
+library(broom)
 
 # Plot settings
 theme_set(
@@ -22,19 +23,99 @@ theme_set(
       legend.background = element_rect(colour = "white"))
 )
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Read and prepare data ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 # Read data
 dat <- read_csv("Data-raw/dat.csv")
 surveys <- read_csv("Data-raw/surveys.csv") 
 
-# Change in T value per m
+# Transform elevation 
+dat <- dat %>% 
+  mutate(
+    ele = (elevation - mean(dat$elevation[dat$HS == "colline"])) / 100
+  )
+
+# Change in T value per m (for notional shift)
 moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
 plref <- -1 * coef(lm(T_pl_mean ~ elevation, data = dat))[2]
 tref <- 0.53 / (0.6 / 100)
 
+# Change Termophilisation to notional shift
+dat <- dat %>% 
+  mutate(
+    T_mo_No_shift = T_mo_trend / moref,
+    T_pl_No_shift = T_pl_trend / plref,
+    T_sh_No_shift = T_mo_sh_trend / moref,
+    T_lo_No_shift = T_mo_lo_trend / moref,
+  )
+
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Termophilisation accross all plots ----
+# Table with sample size ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+dat %>% 
+  group_by(`Elevational zone` = HS, `Land use type` = land_use) %>%
+  dplyr::summarise(
+    `Number of plots` = n(),
+    `N trend bryophytes` = sum(!is.na(T_mo_trend)),
+    `N trend vascular plants` = sum(!is.na(T_pl_trend)),
+    `Mean elevation (m)` = mean(elevation)
+  ) %>% 
+  rbind(
+    tibble(
+      `Elevational zone` = "overall", 
+      `Land use type` = "-",
+      `Number of plots` = nrow(dat),
+      `N trend bryophytes` = sum(!is.na(dat$T_mo_trend)),
+      `N trend vascular plants` = sum(!is.na(dat$T_pl_trend)),
+      `Mean elevation (m)` = mean(dat$elevation))) %>% 
+  mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
+  arrange(`Elevational zone`) %>% dim
+  kable(
+    digits = 0,
+    align = c("l", "l", rep("r", 4)),
+    booktabs = T) %>% 
+  kable_styling()
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Table with descriptive statistics ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+dat %>% 
+  group_by(`Elevational zone` = HS, `Land use type` = land_use) %>%
+  dplyr::summarise(
+    `Species richness bryophytes` = paste0(round(mean(SR_mo_mean), 1), " ± ", round(sd(SR_mo_mean), 1)),
+    `Species richness short lived bryophytes` = paste0(round(mean(SR_mo_sh_mean), 1), " ± ", round(sd(SR_mo_sh_mean), 1)),
+    `Species richness long lived bryophytes` = paste0(round(mean(SR_mo_lo_mean), 1), " ± ", round(sd(SR_mo_lo_mean), 1)),
+    `Tempera-ture affinity bryophytes` = paste0(round(mean(T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(T_mo_mean, na.rm = TRUE), 2)),
+    `Species richness vascular plants` = paste0(round(mean(SR_pl_mean), 1), " ± ", round(sd(SR_pl_mean), 1)),
+    `Tempera-ture affinity vascular plants` = paste0(round(mean(T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(T_pl_mean, na.rm = TRUE), 2))
+  ) %>% 
+  rbind(
+    tibble(
+      `Species richness bryophytes` = paste0(round(mean(dat$SR_mo_mean), 1), " ± ", round(sd(dat$SR_mo_mean), 1)),
+      `Species richness short lived bryophytes` = paste0(round(mean(dat$SR_mo_sh_mean), 1), " ± ", round(sd(dat$SR_mo_sh_mean), 1)),
+      `Species richness long lived bryophytes` = paste0(round(mean(dat$T_mo_lo_trend), 1), " ± ", round(sd(dat$SR_mo_lo_mean), 1)),
+      `Tempera-ture affinity bryophytes` = paste0(round(mean(dat$T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_mo_mean, na.rm = TRUE), 2)),
+      `Species richness vascular plants` = paste0(round(mean(dat$SR_pl_mean), 1), " ± ", round(sd(dat$SR_pl_mean), 1)),
+      `Tempera-ture affinity vascular plants` = paste0(round(mean(dat$T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_pl_mean, na.rm = TRUE), 2))) 
+  ) %>% 
+  mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
+  arrange(`Elevational zone`) %>% 
+  kable(
+    digits = 0,
+    align = c("l", "l", rep("r", 4)),
+    booktabs = T) %>% 
+  kable_styling()
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Termophilisation and notianal shift accross all plots ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Termophilisation
 gls(
   T_mo_trend ~ 1, weights = varPower(form = ~ SR_mo_mean), 
   data = dat %>% filter(!is.na(T_mo_trend))) %>% 
@@ -44,15 +125,24 @@ gls(
   data = dat %>% filter(!is.na(T_pl_trend))) %>% 
   summary
 
+# Notional shift
+gls(
+  T_mo_No_shift ~ 1, weights = varPower(form = ~ SR_mo_mean), 
+  data = dat %>% filter(!is.na(T_mo_trend))) %>% 
+  summary
+gls(
+  T_pl_No_shift ~ 1, weights = varPower(form = ~ SR_pl_mean), 
+  data = dat %>% filter(!is.na(T_pl_trend))) %>% 
+  summary
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Main model on thermophilisation rate (Hyp: i- iii) ----
+# Notional elevation shift between species groups, land use types and across elevation ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
 d <- dat %>%
-  dplyr::select(aID_STAO, ele, land_use, T_mo_trend, T_pl_trend) %>% 
-  gather("vascpl", "thermo", -c(aID_STAO, ele, land_use)) %>% 
+  dplyr::select(aID_STAO, ele, land_use, HS, T_mo_No_shift, T_pl_No_shift) %>% 
+  gather("vascpl", "thermo", -c(aID_STAO, ele, land_use, HS)) %>% 
   mutate(vascpl = as.integer(factor(vascpl)) - 1) %>% 
   left_join(
     dat %>%
@@ -60,11 +150,133 @@ d <- dat %>%
       gather("vascpl", "SR", -c(aID_STAO)) %>% 
       mutate(vascpl = as.integer(factor(vascpl)) - 1)) %>% 
   filter(!is.na(thermo)) %>% 
-  mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
+  mutate(
+    land_use = factor(land_use, levels = c("grassland", "forest", "unused")),
+    HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine")))
 
 # Apply main model
-lme(thermo ~ vascpl + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d) %>% 
-  summary 
+mod <- lme(thermo ~ vascpl + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+  kable(
+    digits = c(2, 2, 0, 3),
+    align = "l",
+    booktabs = T) %>% 
+  kable_styling()
+
+# Function to get bootstrap sample
+getbootsample <- function(s) {
+  newdat <- dsel[sample(1:nrow(dsel), replace = TRUE),]
+  out <- newdat %>% 
+    mutate(pre = predict(mod, newdata = newdat)) %>% 
+    group_by(HS, land_use, vascpl) %>% 
+    dplyr::summarise(No_shift = mean(thermo)) 
+  names(out)[4] <- paste0("S_", s)
+  out
+}
+
+# Select data for all land use types and species groups with enough data
+dsel <- d %>% 
+  filter(!(HS == "colline" & land_use == "unused")) %>% 
+  filter(!(HS == "montane" & land_use == "unused")) %>% 
+  filter(!(HS == "subalpine" & land_use == "unused")) %>% 
+  filter(!(HS == "alpine" & land_use == "forest")) 
+  
+# Make predictions using bootstrap samples
+res <- dsel %>% 
+  group_by(HS, land_use, vascpl) %>% 
+  dplyr::summarise(No_shift = mean(thermo)) 
+for(s in 1:1000){
+  res <- res %>% left_join(getbootsample(s))
+}
+pred <- res[, 1:4] %>% 
+  mutate(
+    land_use = fct_recode(land_use, `unmanaged open areas` = "unused"),
+    vascpl = factor(vascpl, levels = c(0, 1)),
+    av = apply(res[, 5:ncol(res)], 1, mean),
+    lo = apply(res[, 5:ncol(res)], 1, quantile, probs = 0.025),
+    up = apply(res[, 5:ncol(res)], 1, quantile, probs = 0.975)
+  ) %>% 
+  mutate(
+    land_use = factor(land_use, levels = c("forest", "grassland", "unmanaged open areas"))
+  )
+
+# Make figure with predictions for each land-use type and elevational band
+forest <-pred %>% 
+  filter(land_use == "forest") %>% 
+  ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_point(position = position_dodge(width = 0.25)) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
+  ylim(-220, 400) +
+  labs(
+    x = "",
+    y = "Notional elevational shift\n(m per decade)",
+    title = "(A) Forest") +
+  scale_x_discrete(
+    limits = c("colline", "montane", "subalpine"),
+    labels = c("colline", "montane", "sub-\nalpine"))
+grassland <-pred %>% 
+  filter(land_use == "grassland") %>% 
+  ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_point(position = position_dodge(width = 0.25)) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
+  ylim(-220, 400) +
+  labs(
+    x = "",
+    y = "Notional elevational shift\n(m per decade)",
+    title = "(B) Grassland") +
+  scale_x_discrete(
+    limits = c("colline", "montane", "subalpine", "alpine"),
+    labels = c("colline", "montane", "sub-\nalpine", "alpine"))
+unused <-pred %>% 
+  filter(land_use == "unmanaged open areas") %>% 
+  ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_point(position = position_dodge(width = 0.25)) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
+  ylim(-220, 400) +
+  labs(
+    x = "",
+    y = "Notional elevational shift\n(m per decade)",
+    title = "(C) Unmanaged open areas")
+pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
+multiplot(forest, grassland, unused, cols = 3)
+dev.off()
+
+# Make table with predictions for each land-use type and elevational band
+pred %>% 
+  ungroup() %>% 
+  filter(vascpl == 0) %>% 
+  transmute(
+    `Elevational zone` = HS,
+    `Land use type` = land_use,
+    `Notional elevation shift (bryo)` = No_shift,
+    `Conf lo (bryo)` = lo,
+    `Conf up (bryo)` = up,
+  ) %>% 
+  cbind(
+    pred %>% 
+      ungroup() %>% 
+      filter(vascpl == 1) %>% 
+      transmute(
+        `Notional elevation shift (vascpl)` = No_shift,
+        `Conf lo (vascpl)` = lo,
+        `Conf up (vascpl)` = up,
+      ) 
+  ) %>% 
+  arrange(`Elevational zone`, `Land use type`) %>% 
+  kable(
+    digits = 1,
+    align = c("l", "l", rep("r", 6)),
+    booktabs = T) %>% 
+  kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure ----
@@ -113,7 +325,8 @@ d <- map_dfr(
     c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Bryophytes")) %>%
   rbind(map_dfr(
     c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Vascular plants")) %>%
-  mutate(eleband = factor(eleband, levels = rev(c("colline", "montane", "subalpine", "alpine"))))    
+  mutate(eleband = factor(eleband, levels = rev(c("colline", "montane", "subalpine", "alpine"))))
+d$lu[d$lu == "unused"] <- "unmanaged open areas"
 
 d %>% 
   ggplot(aes(x = year, y = T, ymin = T_lo, ymax = T_up, linetype = lu, col = lu, fill = lu)) +
@@ -127,174 +340,124 @@ d %>%
   theme(legend.position="bottom")
 ggsave("Figures/main-figure.pdf", height = 8, width = 5)
 
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Notional elevational shifts ----
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-# Plot: temporal change across HS for forest plots
-forest <-
-  dat %>% 
-  filter(land_use == "forest") %>% 
-  filter(HS != "alpine") %>% 
-  group_by(HS) %>% 
-  dplyr::summarise(
-    mean = median(T_pl_trend / plref, na.rm = TRUE),
-    lo = t.test(T_pl_trend / plref)$conf.int[1],
-    up = t.test(T_pl_trend/ plref)$conf.int[2],
-    gr = "plants") %>% 
-  rbind(
-    dat %>% 
-      filter(land_use == "forest") %>% 
-      filter(HS != "alpine") %>% 
-      group_by(HS) %>% 
-      dplyr::summarise(
-        mean = mean(T_mo_trend / moref, na.rm = TRUE),
-        lo = t.test(T_mo_trend / moref)$conf.int[1],
-        up = t.test(T_mo_trend / moref)$conf.int[2],
-        gr = "moss")) %>% 
-  ggplot(aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
-  geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_point(position = position_dodge(width = 0.25)) +
-  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
-  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  # ylim(-300, 300) +
-  labs(
-    x = "",
-    y = "Notional elevational shift\n(m per decade)",
-    title = "(A) Forest") +
-  scale_x_discrete(
-    limits = c("colline", "montane", "subalpine"),
-    labels = c("colline", "montane", "sub-\nalpine"))
-
-# Plot: temporal change across HS for grassland plots
-grassland <-
-  dat %>% 
-  filter(land_use == "grassland") %>% 
-  group_by(HS) %>% 
-  dplyr::summarise(
-    mean = mean(T_pl_trend / plref, na.rm = TRUE),
-    lo = t.test(T_pl_trend / plref)$conf.int[1],
-    up = t.test(T_pl_trend / plref)$conf.int[2],
-    gr = "plants") %>% 
-  rbind(
-    dat %>% 
-      filter(land_use == "grassland") %>% 
-      group_by(HS) %>% 
-      dplyr::summarise(
-        mean = mean(T_mo_trend / moref, na.rm = TRUE),
-        lo = t.test(T_mo_trend / moref)$conf.int[1],
-        up = t.test(T_mo_trend / moref)$conf.int[2],
-        gr = "moss")) %>% 
-  ggplot(aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
-  geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_point(position = position_dodge(width = 0.25)) +
-  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
-  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  # ylim(-300, 400) +
-  labs(
-    x = "",
-    y = "Notional elevational shift\n(m per decade)",
-    title = "(B) Grassland")  +
-  scale_x_discrete(
-    limits = c("colline", "montane", "subalpine", "alpine"),
-    labels = c("colline", "montane", "sub-\nalpine", "alpine"))
-
-# Plot: temporal change across HS for unused plots
-unused <-
-  dat %>% 
-  filter(land_use == "unused") %>% 
-  filter(HS == "alpine") %>% 
-  group_by(HS) %>% 
-  dplyr::summarise(
-    l = -1 * coef(lm(T_pl_mean ~ elevation))[2],
-    mean = mean(T_pl_trend / plref, na.rm = TRUE),
-    lo = t.test(T_pl_trend / plref)$conf.int[1],
-    up = t.test(T_pl_trend / plref)$conf.int[2],
-    gr = "plants") %>% 
-  rbind(
-    dat %>% 
-      filter(land_use == "unused") %>% 
-      filter(HS == "alpine") %>% 
-      group_by(HS) %>% 
-      dplyr::summarise(
-        l = -1 * coef(lm(T_mo_mean ~ elevation))[2],
-        mean = mean(T_mo_trend / moref, na.rm = TRUE),
-        lo = t.test(T_mo_trend / moref)$conf.int[1],
-        up = t.test(T_mo_trend / moref)$conf.int[2],
-        gr = "moss")) %>% 
-  ggplot(aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
-  geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_point(position = position_dodge(width = 0.25)) +
-  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
-  scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  # ylim(-300, 300) +
-  labs(
-    x = "",
-    y = "Notional elevational shift\n(m per decade)",
-    title = "(C) Unused") +
-  scale_x_discrete(
-    limits = c("alpine"),
-    labels = c("alpine"))
-
-pdf("Figures/Elevational-shifts.pdf", width = 10, height = 3.5)
-multiplot(forest, grassland, unused, cols = 3)
-dev.off()
-
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Temporal trends in alpine communities of Termo., Meso- and Cryophilic species numbers ----
+# Temporal trends in termo., meso- and cryophilic species numbers ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-d <- surveys %>% filter(HS == "alpine")
+# a) Total
+d <- surveys 
+rbind(
+  summary(glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+rbind(
+  summary(glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
 
-# Bryophytes
-glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
-glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
-glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+# b) Colline
+d <- surveys  %>% filter(HS == "colline")
+rbind(
+  summary(glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+rbind(
+  summary(glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
 
-# Vascular plants
-glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
-glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
-glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson) %>% summary
+# c) montane
+d <- surveys  %>% filter(HS == "montane")
+rbind(
+  summary(glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+rbind(
+  summary(glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+
+# d) subalpine
+d <- surveys  %>% filter(HS == "subalpine")
+rbind(
+  summary(glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+rbind(
+  summary(glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+
+# d) alpine
+d <- surveys  %>% filter(HS == "alpine")
+rbind(
+  summary(glmer(AZ_mo_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_mo_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
+rbind(
+  summary(glmer(AZ_pl_Cryo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Meso ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)],
+  summary(glmer(AZ_pl_Termo ~ yr + (1|aID_STAO), data = d, family = poisson))$coefficients[2, c(1, 2, 4)]) %>% 
+  kable(digits = 3, align = "l", booktabs = T) %>% 
+  kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Termophilisation between life strategies (Hyp iv)----
+# Notional elevational shift between life strategies ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
 d <- dat %>%
-  dplyr::select(aID_STAO, ele, land_use, T_mo_sh_trend, T_mo_lo_trend) %>% 
+  dplyr::select(aID_STAO, ele, land_use, T_sh_No_shift, T_lo_No_shift) %>% 
   gather("strategy", "thermo", -c(aID_STAO, ele, land_use)) %>% 
-  mutate(strategy = factor(strategy, levels = c("T_mo_sh_trend", "T_mo_lo_trend"))) %>% 
+  mutate(strategy = factor(strategy, levels = c("T_sh_No_shift", "T_lo_No_shift"))) %>% 
   left_join(dat %>% dplyr::select(aID_STAO, SR_mo_mean)) %>% 
   filter(!is.na(thermo)) %>% 
   mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
 
 # Apply main model
-lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) %>% 
-  summary 
-lme(thermo ~ strategy, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) %>% 
-  summary 
+mod <- lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) 
+summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+  kable(
+    digits = c(2, 2, 0, 3),
+    align = "l",
+    booktabs = T) %>% 
+  kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Plot: Short and long-lived species ----
+# Plot: Notial elevation shift of short and long-lived species ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #short-lived species
 d.res_sh <- dat %>% 
   group_by(HS) %>% 
   dplyr::summarise(
-    mean = mean(T_mo_sh_trend, na.rm = TRUE),
-    lo = t.test(T_mo_sh_trend)$conf.int[1],
-    up = t.test(T_mo_sh_trend)$conf.int[2],
+    mean = mean(T_sh_No_shift, na.rm = TRUE),
+    lo = t.test(T_sh_No_shift)$conf.int[1],
+    up = t.test(T_sh_No_shift)$conf.int[2],
     gr = "short-lived species") %>% 
   rbind(
     tibble(
       HS = "overall",
-      mean = mean(dat$T_mo_sh_trend, na.rm = TRUE),
-      lo = t.test(dat$T_mo_sh_trend)$conf.int[1],
-      up = t.test(dat$T_mo_sh_trend)$conf.int[2],
+      mean = mean(dat$T_sh_No_shift, na.rm = TRUE),
+      lo = t.test(dat$T_sh_No_shift)$conf.int[1],
+      up = t.test(dat$T_sh_No_shift)$conf.int[2],
       gr = "short-lived species")
   )
 
@@ -302,16 +465,16 @@ d.res_sh <- dat %>%
 d.res_lo <- dat %>% 
   group_by(HS) %>% 
   dplyr::summarise(
-    mean = mean(T_mo_lo_trend, na.rm = TRUE),
-    lo = t.test(T_mo_lo_trend)$conf.int[1],
-    up = t.test(T_mo_lo_trend)$conf.int[2],
+    mean = mean(T_lo_No_shift, na.rm = TRUE),
+    lo = t.test(T_lo_No_shift)$conf.int[1],
+    up = t.test(T_lo_No_shift)$conf.int[2],
     gr = "long-lived species")%>% 
   rbind(
     tibble(
       HS = "overall",
-      mean = mean(dat$T_mo_lo_trend, na.rm = TRUE),
-      lo = t.test(dat$T_mo_lo_trend)$conf.int[1],
-      up = t.test(dat$T_mo_lo_trend)$conf.int[2],
+      mean = mean(dat$T_lo_No_shift, na.rm = TRUE),
+      lo = t.test(dat$T_lo_No_shift)$conf.int[1],
+      up = t.test(dat$T_lo_No_shift)$conf.int[2],
       gr = "long-lived species")
   )
 
@@ -321,57 +484,20 @@ d.res <- d.res %>% mutate(
   HS = factor(HS, levels = c("overall", "colline", "montane", "subalpine", "alpine")),
   gr = factor(gr, levels = c("short-lived species", "long-lived species"))) 
 
-#Graphics
+# Graphics
 ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
   geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
   labs(
     x = "",
-    y = "Thermophilisation rate",
+    y = "Notional elevational shift\n(m per decade)",
     title = ""
   ) +
   theme(legend.position="bottom")
-ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 5, width = 8)
+ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 4, width = 6)
 
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Linear models: Short and long-lived species ----
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-# Prepare data
-dd <- dat %>% 
-  transmute(
-    T_trend = T_mo_sh_trend,
-    SR = SR_mo_mean,
-    ele = ele,
-    HS = HS,
-    aID_STAO = aID_STAO,
-    short = 1
-  ) %>% 
-  rbind(
-    dat %>% 
-      transmute(
-        T_trend = T_mo_lo_trend,
-        SR = SR_mo_mean,
-        ele = ele,
-        HS = HS,
-        aID_STAO = aID_STAO,
-        short = 0
-      )
-  ) %>% 
-  filter(!is.na(T_trend))
 
-# Apply models
-lme(T_trend ~ short, random = ~ 1 | aID_STAO, data = dd) %>% 
-  summary
-lme(T_trend ~ short, random = ~ 1 | aID_STAO, 
-    data = dd %>% filter(HS == "alpine")) %>% 
-  anova
-
-# Notional elevational shifts
-shref <- -1 * coef(lm(T_mo_sh_mean ~ elevation, data = dat))[2]
-loref <- -1 * coef(lm(T_mo_lo_mean ~ elevation, data = dat))[2]
-moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
-d.res_sh[d.res_sh$HS == "alpine", "mean"] / moref
-d.res_lo[d.res_lo$HS == "alpine", "mean"] / moref
