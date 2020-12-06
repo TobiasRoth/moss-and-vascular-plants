@@ -11,6 +11,8 @@ library(nlme)
 library(arm)
 library(lemon)
 library(broom)
+library(knitr)
+library(kableExtra)
 
 # Plot settings
 theme_set(
@@ -72,13 +74,12 @@ dat %>%
       `N trend vascular plants` = sum(!is.na(dat$T_pl_trend)),
       `Mean elevation (m)` = mean(dat$elevation))) %>% 
   mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
-  arrange(`Elevational zone`) %>% dim
+  arrange(`Elevational zone`) %>% 
   kable(
     digits = 0,
     align = c("l", "l", rep("r", 4)),
     booktabs = T) %>% 
   kable_styling()
-
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table with descriptive statistics ----
@@ -97,8 +98,8 @@ dat %>%
   rbind(
     tibble(
       `Species richness bryophytes` = paste0(round(mean(dat$SR_mo_mean), 1), " ± ", round(sd(dat$SR_mo_mean), 1)),
-      `Species richness short lived bryophytes` = paste0(round(mean(dat$SR_mo_sh_mean), 1), " ± ", round(sd(dat$SR_mo_sh_mean), 1)),
-      `Species richness long lived bryophytes` = paste0(round(mean(dat$T_mo_lo_trend), 1), " ± ", round(sd(dat$SR_mo_lo_mean), 1)),
+      `Species richness short lived bryophytes` = paste0(round(mean(dat$SR_mo_sh_mean, na.rm = TRUE), 1), " ± ", round(sd(dat$SR_mo_sh_mean), 1)),
+      `Species richness long lived bryophytes` = paste0(round(mean(dat$SR_mo_lo_mean, na.rm = TRUE), 1), " ± ", round(sd(dat$SR_mo_lo_mean), 1)),
       `Tempera-ture affinity bryophytes` = paste0(round(mean(dat$T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_mo_mean, na.rm = TRUE), 2)),
       `Species richness vascular plants` = paste0(round(mean(dat$SR_pl_mean), 1), " ± ", round(sd(dat$SR_pl_mean), 1)),
       `Tempera-ture affinity vascular plants` = paste0(round(mean(dat$T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_pl_mean, na.rm = TRUE), 2))) 
@@ -209,14 +210,14 @@ forest <-pred %>%
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  ylim(-220, 400) +
+  ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevational shift\n(m per decade)",
+    y = "Notional elevation shift\n[m per decade]",
     title = "(A) Forest") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine"),
-    labels = c("colline", "montane", "sub-\nalpine"))
+    labels = c("Colline", "Montane", "Sub-\nalpine"))
 grassland <-pred %>% 
   filter(land_use == "grassland") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
@@ -225,14 +226,14 @@ grassland <-pred %>%
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  ylim(-220, 400) +
+  ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevational shift\n(m per decade)",
-    title = "(B) Grassland") +
+    y = "Notional elevation shift\n[m per decade]",
+    title = "(B) Managed grasslands") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine", "alpine"),
-    labels = c("colline", "montane", "sub-\nalpine", "alpine"))
+    labels = c("Colline", "Montane", "Sub-\nalpine", "Alpine"))
 unused <-pred %>% 
   filter(land_use == "unmanaged open areas") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
@@ -241,11 +242,14 @@ unused <-pred %>%
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
-  ylim(-220, 400) +
+  ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevational shift\n(m per decade)",
-    title = "(C) Unmanaged open areas")
+    y = "Notional elevation shift\n[m per decade]",
+    title = "(C) Unmanaged open areas") +
+  scale_x_discrete(
+    limits = c("alpine"),
+    labels = c("Alpine"))
 pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
 multiplot(forest, grassland, unused, cols = 3)
 dev.off()
@@ -324,9 +328,15 @@ d <- map_dfr(
   rbind(map_dfr(
     c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Bryophytes")) %>%
   rbind(map_dfr(
-    c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Vascular plants")) %>%
-  mutate(eleband = factor(eleband, levels = rev(c("colline", "montane", "subalpine", "alpine"))))
-d$lu[d$lu == "unused"] <- "unmanaged open areas"
+    c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Vascular plants")) 
+d$lu[d$lu == "unused"] <- "Unmanaged open areas"
+d$lu[d$lu == "grassland"] <- "Managed grasslands"
+d$lu[d$lu == "forest"] <- "Forest"
+d$eleband[d$eleband == "colline"] <- "Colline"
+d$eleband[d$eleband == "montane"] <- "Montane"
+d$eleband[d$eleband == "subalpine"] <- "Subalpine"
+d$eleband[d$eleband == "alpine"] <- "Alpine"
+d <- d %>% mutate(eleband = factor(eleband, levels = rev(c("Colline", "Montane", "Subalpine", "Alpine"))))
 
 d %>% 
   ggplot(aes(x = year, y = T, ymin = T_lo, ymax = T_up, linetype = lu, col = lu, fill = lu)) +
@@ -343,6 +353,26 @@ ggsave("Figures/main-figure.pdf", height = 8, width = 5)
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Temporal trends in termo., meso- and cryophilic species numbers ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Table with number of species in the three groups
+surveys %>% 
+  group_by(`Elevational zone` = HS) %>%
+  dplyr::summarise(
+    `SR cryo bryophytes` = paste0(round(mean(AZ_mo_Cryo), 1), " ± ", round(sd(AZ_mo_Cryo), 1)),
+    `SR meso bryophytes` = paste0(round(mean(AZ_mo_Meso), 1), " ± ", round(sd(AZ_mo_Meso), 1)),
+    `SR termo bryophytes` = paste0(round(mean(AZ_mo_Termo), 1), " ± ", round(sd(AZ_mo_Termo), 1)),
+    `SR cryo vasc plants` = paste0(round(mean(AZ_pl_Cryo), 1), " ± ", round(sd(AZ_pl_Cryo), 1)),
+    `SR meso vasc plants` = paste0(round(mean(AZ_pl_Meso), 1), " ± ", round(sd(AZ_pl_Meso), 1)),
+    `SR termo vasc plants` = paste0(round(mean(AZ_pl_Termo), 1), " ± ", round(sd(AZ_pl_Termo), 1))
+  ) %>% 
+  mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
+  arrange(`Elevational zone`) %>% 
+  kable(
+    digits = 0,
+    align = c("l", rep("r", 6)),
+    booktabs = T) %>% 
+  kable_styling()
+
 
 # a) Total
 d <- surveys 
@@ -445,44 +475,50 @@ summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%
 # Plot: Notial elevation shift of short and long-lived species ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #short-lived species
-d.res_sh <- dat %>% 
+d <- dat
+d$HS[d$HS == "colline"] <- "Colline"
+d$HS[d$HS == "montane"] <- "Montane"
+d$HS[d$HS == "subalpine"] <- "Subalpine"
+d$HS[d$HS == "alpine"] <- "Alpine"
+
+d.res_sh <- d %>% 
   group_by(HS) %>% 
   dplyr::summarise(
     mean = mean(T_sh_No_shift, na.rm = TRUE),
     lo = t.test(T_sh_No_shift)$conf.int[1],
     up = t.test(T_sh_No_shift)$conf.int[2],
-    gr = "short-lived species") %>% 
+    gr = "Short-lived") %>% 
   rbind(
     tibble(
-      HS = "overall",
+      HS = "All zones",
       mean = mean(dat$T_sh_No_shift, na.rm = TRUE),
       lo = t.test(dat$T_sh_No_shift)$conf.int[1],
       up = t.test(dat$T_sh_No_shift)$conf.int[2],
-      gr = "short-lived species")
+      gr = "Short-lived")
   )
 
 #long-lived species  
-d.res_lo <- dat %>% 
+d.res_lo <- d %>% 
   group_by(HS) %>% 
   dplyr::summarise(
     mean = mean(T_lo_No_shift, na.rm = TRUE),
     lo = t.test(T_lo_No_shift)$conf.int[1],
     up = t.test(T_lo_No_shift)$conf.int[2],
-    gr = "long-lived species")%>% 
+    gr = "Long-lived")%>% 
   rbind(
     tibble(
-      HS = "overall",
+      HS = "All zones",
       mean = mean(dat$T_lo_No_shift, na.rm = TRUE),
       lo = t.test(dat$T_lo_No_shift)$conf.int[1],
       up = t.test(dat$T_lo_No_shift)$conf.int[2],
-      gr = "long-lived species")
+      gr = "Long-lived")
   )
 
 # Combine results of short- and long-lived spcies
 d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
 d.res <- d.res %>% mutate(
-  HS = factor(HS, levels = c("overall", "colline", "montane", "subalpine", "alpine")),
-  gr = factor(gr, levels = c("short-lived species", "long-lived species"))) 
+  HS = factor(HS, levels = c("All zones", "Colline", "Montane", "Subalpine", "Alpine")),
+  gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
 
 # Graphics
 ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
@@ -493,11 +529,58 @@ ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
   labs(
     x = "",
-    y = "Notional elevational shift\n(m per decade)",
+    y = "Notional elevation shift\n[m per decade]",
     title = ""
   ) +
   theme(legend.position="bottom")
 ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 4, width = 6)
 
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Plot: Notial elevation shift of short and long-lived species: differnces between land use types ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#short-lived species
+d <- dat
+d$land_use[d$land_use == "forest"] <- "Forest"
+d$land_use[d$land_use == "grassland"] <- "Managed grasslands"
+d$land_use[d$land_use == "unused"] <- "Unmanaged open areas"
+
+d.res_sh <- d %>% 
+  group_by(land_use) %>% 
+  dplyr::summarise(
+    mean = mean(T_sh_No_shift, na.rm = TRUE),
+    lo = t.test(T_sh_No_shift)$conf.int[1],
+    up = t.test(T_sh_No_shift)$conf.int[2],
+    gr = "Short-lived") 
+
+#long-lived species  
+d.res_lo <- d %>% 
+  group_by(land_use) %>% 
+  dplyr::summarise(
+    mean = mean(T_lo_No_shift, na.rm = TRUE),
+    lo = t.test(T_lo_No_shift)$conf.int[1],
+    up = t.test(T_lo_No_shift)$conf.int[2],
+    gr = "Long-lived")
+
+# Combine results of short- and long-lived spcies
+d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
+d.res <- d.res %>% mutate(
+  HS = factor(land_use, levels = c("Forest", "Managed grasslands", "Unmanaged open areas")),
+  gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
+
+# Graphics
+ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
+  labs(
+    x = "",
+    y = "Notional elevation shift\n[m per decade]",
+    title = ""
+  ) +
+  theme(legend.position="bottom")
+ggsave("Figures/Thermophilisation-short-long-lived_landuse.pdf", height = 4, width = 6)
 
 
