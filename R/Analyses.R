@@ -255,32 +255,62 @@ multiplot(forest, grassland, unused, cols = 3)
 dev.off()
 
 # Make table with predictions for each land-use type and elevational band
-pred %>% 
-  ungroup() %>% 
-  filter(vascpl == 0) %>% 
-  transmute(
-    `Elevational zone` = HS,
-    `Land use type` = land_use,
-    `Notional elevation shift (bryo)` = No_shift,
-    `Conf lo (bryo)` = lo,
-    `Conf up (bryo)` = up,
+# pred %>% 
+#   ungroup() %>% 
+#   filter(vascpl == 0) %>% 
+#   transmute(
+#     `Elevational zone` = HS,
+#     `Land use type` = land_use,
+#     `Notional elevation shift (bryo)` = No_shift,
+#     `Conf lo (bryo)` = lo,
+#     `Conf up (bryo)` = up,
+#   ) %>% 
+#   cbind(
+#     pred %>% 
+#       ungroup() %>% 
+#       filter(vascpl == 1) %>% 
+#       transmute(
+#         `Notional elevation shift (vascpl)` = No_shift,
+#         `Conf lo (vascpl)` = lo,
+#         `Conf up (vascpl)` = up,
+#       ) 
+#   ) %>% 
+#   arrange(`Elevational zone`, `Land use type`) %>% 
+#   kable(
+#     digits = 1,
+#     align = c("l", "l", rep("r", 6)),
+#     booktabs = T) %>% 
+#   kable_styling()
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Table S2 ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+dat %>% 
+  group_by(HS) %>% 
+  dplyr::summarise(
+    shift_bryo = mean(T_mo_No_shift, na.rm = TRUE),
+    lo_bryo = t.test(T_mo_No_shift)$conf.int[1],
+    up_bryo = t.test(T_mo_No_shift)$conf.int[2]) %>% 
+  left_join(
+    dat %>% 
+      group_by(HS) %>% 
+      dplyr::summarise(
+        shift_pl = mean(T_pl_No_shift, na.rm = TRUE),
+        lo_pl = t.test(T_pl_No_shift)$conf.int[1],
+        up_pl = t.test(T_pl_No_shift)$conf.int[2])
   ) %>% 
-  cbind(
-    pred %>% 
-      ungroup() %>% 
-      filter(vascpl == 1) %>% 
-      transmute(
-        `Notional elevation shift (vascpl)` = No_shift,
-        `Conf lo (vascpl)` = lo,
-        `Conf up (vascpl)` = up,
-      ) 
-  ) %>% 
-  arrange(`Elevational zone`, `Land use type`) %>% 
+  mutate(
+    HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine"))) %>% 
+  arrange(HS) %>% 
   kable(
     digits = 1,
     align = c("l", "l", rep("r", 6)),
-    booktabs = T) %>% 
+    booktabs = T) %>%
   kable_styling()
+
+
+
+
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure ----
