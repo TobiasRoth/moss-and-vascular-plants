@@ -214,7 +214,7 @@ forest <-pred %>%
   labs(
     x = "",
     y = "Notional elevation shift\n[m per decade]",
-    title = "(A) Forest") +
+    title = "Forests") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine"),
     labels = c("Colline", "Montane", "Sub-\nalpine"))
@@ -230,7 +230,7 @@ grassland <-pred %>%
   labs(
     x = "",
     y = "Notional elevation shift\n[m per decade]",
-    title = "(B) Managed grasslands") +
+    title = "Managed grasslands") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine", "alpine"),
     labels = c("Colline", "Montane", "Sub-\nalpine", "Alpine"))
@@ -246,10 +246,11 @@ unused <-pred %>%
   labs(
     x = "",
     y = "Notional elevation shift\n[m per decade]",
-    title = "(C) Unmanaged open areas") +
+    title = "Unmanaged open areas") +
   scale_x_discrete(
     limits = c("alpine"),
     labels = c("Alpine"))
+
 pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
 multiplot(forest, grassland, unused, cols = 3)
 dev.off()
@@ -308,10 +309,6 @@ dat %>%
     booktabs = T) %>%
   kable_styling()
 
-
-
-
-
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -361,7 +358,7 @@ d <- map_dfr(
     c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Vascular plants")) 
 d$lu[d$lu == "unused"] <- "Unmanaged open areas"
 d$lu[d$lu == "grassland"] <- "Managed grasslands"
-d$lu[d$lu == "forest"] <- "Forest"
+d$lu[d$lu == "forest"] <- "Forests"
 d$eleband[d$eleband == "colline"] <- "Colline"
 d$eleband[d$eleband == "montane"] <- "Montane"
 d$eleband[d$eleband == "subalpine"] <- "Subalpine"
@@ -373,7 +370,7 @@ d %>%
   geom_line(lty = 1, lwd = 1) +
   geom_ribbon(alpha = 0.5, lty = "blank") +
   scale_y_continuous(breaks = seq(0,5,0.1)) +
-  labs(x = "Study period", y = "Temperature affinity of species communities") +
+  labs(x = "Year", y = "Temperature affinity") +
   scale_fill_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") +
@@ -571,7 +568,7 @@ ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 4, width = 6)
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #short-lived species
 d <- dat
-d$land_use[d$land_use == "forest"] <- "Forest"
+d$land_use[d$land_use == "forest"] <- "Forests"
 d$land_use[d$land_use == "grassland"] <- "Managed grasslands"
 d$land_use[d$land_use == "unused"] <- "Unmanaged open areas"
 
@@ -595,7 +592,7 @@ d.res_lo <- d %>%
 # Combine results of short- and long-lived spcies
 d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
 d.res <- d.res %>% mutate(
-  HS = factor(land_use, levels = c("Forest", "Managed grasslands", "Unmanaged open areas")),
+  HS = factor(land_use, levels = c("Forests", "Managed grasslands", "Unmanaged open areas")),
   gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
 
 # Graphics

@@ -356,7 +356,7 @@ lines(x=c(xx+50000, xx+50000), y=c(yy, yy+2000))
 text(xx+25000, yy-5000, "50 km", cex=0.7)
 legend(
   740000, yy + 34000, bty = "n",
-  legend = c("Forest", "Managed grasslands", "Unmanaged open areas"), 
+  legend = c("Forests", "Managed grasslands", "Unmanaged open areas"), 
   pch = 21,
   pt.bg = c("green", "orange", "white"))
 dev.off()
