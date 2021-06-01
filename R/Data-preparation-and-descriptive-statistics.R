@@ -14,7 +14,8 @@ library(raster)
 library(readxl)
 
 # Connection to data base
-db <- src_sqlite(path = "DB/DB_BDM_2020_07_01.db", create = FALSE)
+db <- src_sqlite(path = "~/Dropbox/3_Resourcen/BDM_DB/DB_BDM_2020_07_01.db", create = FALSE)
+db_neu <- src_sqlite(path = "~/Dropbox/3_Resourcen/BDM_DB/DB_BDM_2021_06_01.db", create = FALSE)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Export survey data from DB ----
@@ -52,15 +53,19 @@ surveys <-
   # Add vascular plant data:
   left_join(
     tbl(db, "Pl") %>% 
-      left_join(tbl(db, "TRAITS_PL")) %>% 
+      left_join(tbl(db_neu, "TRAITS_PL"), copy = TRUE) %>% 
+      as_tibble() %>% 
       group_by(aID_KD) %>% 
       dplyr::summarise(
         AZ_pl = n(),
         AZ_pl_Termo = sum(T >= 4, na.rm = TRUE),
         AZ_pl_Meso = sum(T == 3, na.rm = TRUE),
         AZ_pl_Cryo = sum(T <= 2, na.rm = TRUE),
-        T_pl = mean(T, na.rm = TRUE) %>% round(2)
-      )) %>% 
+        T_pl = round(mean(T, na.rm = TRUE), 2),
+        T_pl_sh = mean(T[!is.na(match(KS, c("rrr", "rrs", "crr")))], na.rm = TRUE),
+        T_pl_lo = mean(T[!is.na(match(KS, c("ccc", "ccr", "ccs")))], na.rm = TRUE)
+      ),
+    copy = TRUE) %>% 
   
   # Add bryophyte data:
   left_join(
@@ -74,7 +79,7 @@ surveys <-
         AZ_mo_Cryo = sum(T <= 2, na.rm = TRUE),
         AZ_mo_sh = sum(T[GenTime <= 6.6 & !is.na(GenTime)], na.rm = TRUE),
         AZ_mo_lo = sum(T[GenTime > 6.6 & !is.na(GenTime)], na.rm = TRUE),
-        T_mo = mean(T, na.rm = TRUE) %>% round(2),
+        T_mo = round(mean(T, na.rm = TRUE), 2),
         T_mo_sh = mean(T[GenTime <= 6.6 & !is.na(GenTime)], na.rm = TRUE),
         T_mo_lo = mean(T[GenTime > 6.6 & !is.na(GenTime)], na.rm = TRUE)
       )) %>% 
@@ -85,7 +90,7 @@ surveys <-
 # Add name of delarze habitat type
 surveys <- surveys %>% 
   left_join(
-    read_excel("DB/Teil_II-UV-1709-NPA_NPL-DFI_DigitaleListe_Lebensraeume.xlsx", skip = 9) %>% 
+    read_excel("Data-raw/Teil_II-UV-1709-NPA_NPL-DFI_DigitaleListe_Lebensraeume.xlsx", skip = 9) %>% 
       transmute(
         Ecosystem = `Ecosystem (Deusch)`,
         Delarze = str_remove_all(Typo_CH, pattern = "[.]") %>% str_sub(1, 3) %>% as.integer(),
@@ -160,7 +165,7 @@ n_distinct(surveys$aID_STAO)
 moss <- 
   tbl(db, "Moos") %>% 
   left_join(tbl(db, "KD_Z9")) %>% 
-  left_join(tbl(db, "ARTEN") %>% dplyr::select(aID_SP, Gattung, Art)) %>%      
+  left_join(tbl(db, "ARTEN") %>% dplyr::select(aID_SP, Gattung, Art, Komplex)) %>%      
   left_join(tbl(db, "Traits_Moos")) %>% 
   filter(!is.na(aID_SP)) %>% 
   as_tibble() %>% 
@@ -171,7 +176,8 @@ moss <-
     aID_SP = aID_SP,
     species = paste(Gattung, Art),
     T = T,
-    GenTime = GenTime
+    GenTime = GenTime,
+    Komplex = Komplex
   ) %>% 
   arrange(aID_KD, aID_SP)
 
@@ -179,8 +185,8 @@ moss <-
 plants <- 
   tbl(db, "PL") %>% 
   left_join(tbl(db, "KD_Z9")) %>% 
-  left_join(tbl(db, "ARTEN") %>% dplyr::select(aID_SP, Gattung, Art)) %>%      
-  left_join(tbl(db, "Traits_Pl")) %>% 
+  left_join(tbl(db, "ARTEN") %>% dplyr::select(aID_SP, Gattung, Art, Komplex)) %>%      
+  left_join(tbl(db_neu, "Traits_Pl"), copy = TRUE) %>% 
   filter(!is.na(aID_SP)) %>% 
   as_tibble() %>% 
   filter(!is.na(match(aID_KD, surveys$aID_KD))) %>% 
@@ -189,7 +195,9 @@ plants <-
     aID_STAO = aID_STAO,
     aID_SP = aID_SP,
     species = paste(Gattung, Art),
-    T = T
+    T = T,
+    KS = KS,
+    Komplex = Komplex
   ) %>% 
   arrange(aID_KD, aID_SP)
 
@@ -219,7 +227,11 @@ dat <- surveys %>%
     SR_pl_mean = mean(AZ_pl, na.rm = TRUE),
     SR_pl_trend = get_trend(AZ_pl, year),
     T_pl_mean = mean(T_pl, na.rm = TRUE),
+    T_pl_sh_mean = mean(T_pl_sh, na.rm = TRUE),
+    T_pl_lo_mean = mean(T_pl_lo, na.rm = TRUE),    
     T_pl_trend = get_trend(T_pl, year),
+    T_pl_sh_trend = get_trend(T_pl_sh, year),
+    T_pl_lo_trend = get_trend(T_pl_lo, year),
     SR_mo_mean = mean(AZ_mo, na.rm = TRUE),
     SR_mo_sh_mean = mean(AZ_mo_sh, na.rm = TRUE),
     SR_mo_lo_mean = mean(AZ_mo_lo, na.rm = TRUE),
@@ -283,6 +295,20 @@ nrow(surveys)
 # Total number of recorded species
 n_distinct(moss$aID_SP)
 n_distinct(plants$aID_SP)
+
+# Proportion of aggregates
+tt <- tbl(db, "Arten") %>% 
+  filter(Z7Z9 == 1) %>% 
+  filter(MOOS == 1) %>% 
+  pull(Komplex)
+mean(tt != "nein")
+mean(moss$Komplex != "nein" )
+tt <- tbl(db, "Arten") %>% 
+  filter(Z7Z9 == 1) %>% 
+  filter(PL == 1) %>% 
+  pull(Komplex)
+mean(!is.na(tt))
+mean(!is.na(plants$Komplex == "nein"))
 
 # Plot averages: species richness
 mean(dat$SR_mo_mean) %>% round(1) 

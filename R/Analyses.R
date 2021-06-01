@@ -42,15 +42,17 @@ dat <- dat %>%
 # Change in T value per m (for notional shift)
 moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
 plref <- -1 * coef(lm(T_pl_mean ~ elevation, data = dat))[2]
-tref <- 0.53 / (0.6 / 100)
+tref <- 0.55 / (0.6 / 100)
 
 # Change Termophilisation to notional shift
 dat <- dat %>% 
   mutate(
     T_mo_No_shift = T_mo_trend / moref,
     T_pl_No_shift = T_pl_trend / plref,
+    T_sh_Pl_No_shift = T_pl_sh_trend / plref,
+    T_lo_Pl_No_shift = T_pl_lo_trend / plref,
     T_sh_No_shift = T_mo_sh_trend / moref,
-    T_lo_No_shift = T_mo_lo_trend / moref,
+    T_lo_No_shift = T_mo_lo_trend / moref
   )
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -113,7 +115,7 @@ dat %>%
   kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Termophilisation and notianal shift accross all plots ----
+# Average trend models: Termophilisation and notianal shift accross all plots ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Termophilisation
@@ -137,7 +139,7 @@ gls(
   summary
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Notional elevation shift between species groups, land use types and across elevation ----
+# Full model: Notional elevation shift between species groups, land use types and across elevation ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
@@ -156,7 +158,10 @@ d <- dat %>%
     HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine")))
 
 # Apply main model
-mod <- lme(thermo ~ vascpl + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+lme(thermo ~ vascpl * ele * land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d) %>% 
+  anova
+mod <- lme(thermo ~ vascpl + ele + land_use + ele:vascpl, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+anova(mod)
 summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
   kable(
     digits = c(2, 2, 0, 3),
@@ -375,7 +380,7 @@ d %>%
   scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") +
   theme(legend.position="bottom")
-ggsave("Figures/main-figure.pdf", height = 8, width = 5)
+ggsave("Figures/main-figure.pdf", height = 8, width = 5.3)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Temporal trends in termo., meso- and cryophilic species numbers ----
@@ -564,13 +569,13 @@ ggsave("Figures/Thermophilisation-short-long-lived.pdf", height = 4, width = 6)
 
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Plot: Notial elevation shift of short and long-lived species: differnces between land use types ----
+# Plot: Notial elevation shift of short and long-lived bryophytes: differnces between land use types ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #short-lived species
 d <- dat
 d$land_use[d$land_use == "forest"] <- "Forests"
-d$land_use[d$land_use == "grassland"] <- "Managed grasslands"
-d$land_use[d$land_use == "unused"] <- "Unmanaged open areas"
+d$land_use[d$land_use == "grassland"] <- "Managed\ngrasslands"
+d$land_use[d$land_use == "unused"] <- "Unmanaged\nopen areas"
 
 d.res_sh <- d %>% 
   group_by(land_use) %>% 
@@ -592,22 +597,73 @@ d.res_lo <- d %>%
 # Combine results of short- and long-lived spcies
 d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
 d.res <- d.res %>% mutate(
-  HS = factor(land_use, levels = c("Forests", "Managed grasslands", "Unmanaged open areas")),
+  HS = factor(land_use, levels = c("Forests", "Managed\ngrasslands", "Unmanaged\nopen areas")),
   gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
 
 # Graphics
-ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
+(p1 <- ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
   geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
   geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
+  ylim(-210, 210) + 
   labs(
     x = "",
     y = "Notional elevation shift\n[m per decade]",
-    title = ""
+    title = "Bryophytes"
   ) +
-  theme(legend.position="bottom")
-ggsave("Figures/Thermophilisation-short-long-lived_landuse.pdf", height = 4, width = 6)
+  theme(legend.position="bottom"))
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Plot: Notial elevation shift of short and long-lived vascular plants: differnces between land use types ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#short-lived species
+d <- dat
+d$land_use[d$land_use == "forest"] <- "Forests"
+d$land_use[d$land_use == "grassland"] <- "Managed\ngrasslands"
+d$land_use[d$land_use == "unused"] <- "Unmanaged\nopen areas"
+
+d.res_sh <- d %>% 
+  group_by(land_use) %>% 
+  dplyr::summarise(
+    mean = mean(T_sh_Pl_No_shift, na.rm = TRUE),
+    lo = t.test(T_sh_Pl_No_shift)$conf.int[1],
+    up = t.test(T_sh_Pl_No_shift)$conf.int[2],
+    gr = "Short-lived") 
+
+#long-lived species  
+d.res_lo <- d %>% 
+  group_by(land_use) %>% 
+  dplyr::summarise(
+    mean = mean(T_lo_Pl_No_shift, na.rm = TRUE),
+    lo = t.test(T_lo_Pl_No_shift)$conf.int[1],
+    up = t.test(T_lo_Pl_No_shift)$conf.int[2],
+    gr = "Long-lived")
+
+# Combine results of short- and long-lived spcies
+d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
+d.res <- d.res %>% mutate(
+  HS = factor(land_use, levels = c("Forests", "Managed\ngrasslands", "Unmanaged\nopen areas")),
+  gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
+
+# Graphics
+(p2 <- ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
+  geom_abline(slope = 0, intercept = 0, lty = 2) +
+  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
+  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
+  ylim(-170, 210) + 
+  labs(
+    x = "",
+    y = "Notional elevation shift\n[m per decade]",
+    title = "Vascular plants"
+  ) +
+  theme(legend.position="bottom"))
+
+pdf("Figures/Thermophilisation-short-long-lived_landuse.pdf", width = 10, height = 3.5)
+multiplot(p1, p2, cols = 2)
+dev.off()
 
