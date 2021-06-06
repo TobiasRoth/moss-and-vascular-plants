@@ -13,6 +13,7 @@ library(lemon)
 library(broom)
 library(knitr)
 library(kableExtra)
+library(lmerTest)
 
 # Plot settings
 theme_set(
@@ -91,11 +92,13 @@ dat %>%
   group_by(`Elevational zone` = HS, `Land use type` = land_use) %>%
   dplyr::summarise(
     `Species richness bryophytes` = paste0(round(mean(SR_mo_mean), 1), " ± ", round(sd(SR_mo_mean), 1)),
+    `Tempera-ture affinity bryophytes` = paste0(round(mean(T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(T_mo_mean, na.rm = TRUE), 2)),
     `Species richness short lived bryophytes` = paste0(round(mean(SR_mo_sh_mean), 1), " ± ", round(sd(SR_mo_sh_mean), 1)),
     `Species richness long lived bryophytes` = paste0(round(mean(SR_mo_lo_mean), 1), " ± ", round(sd(SR_mo_lo_mean), 1)),
-    `Tempera-ture affinity bryophytes` = paste0(round(mean(T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(T_mo_mean, na.rm = TRUE), 2)),
     `Species richness vascular plants` = paste0(round(mean(SR_pl_mean), 1), " ± ", round(sd(SR_pl_mean), 1)),
-    `Tempera-ture affinity vascular plants` = paste0(round(mean(T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(T_pl_mean, na.rm = TRUE), 2))
+    `Tempera-ture affinity vascular plants` = paste0(round(mean(T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(T_pl_mean, na.rm = TRUE), 2)),
+    `Species richness short lived vascular plants` = paste0(round(mean(SR_pl_sh_mean), 1), " ± ", round(sd(SR_pl_sh_mean), 1)),
+    `Species richness long lived vascular plants` = paste0(round(mean(SR_pl_lo_mean), 1), " ± ", round(sd(SR_pl_lo_mean), 1)),
   ) %>% 
   rbind(
     tibble(
@@ -104,7 +107,10 @@ dat %>%
       `Species richness long lived bryophytes` = paste0(round(mean(dat$SR_mo_lo_mean, na.rm = TRUE), 1), " ± ", round(sd(dat$SR_mo_lo_mean), 1)),
       `Tempera-ture affinity bryophytes` = paste0(round(mean(dat$T_mo_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_mo_mean, na.rm = TRUE), 2)),
       `Species richness vascular plants` = paste0(round(mean(dat$SR_pl_mean), 1), " ± ", round(sd(dat$SR_pl_mean), 1)),
-      `Tempera-ture affinity vascular plants` = paste0(round(mean(dat$T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_pl_mean, na.rm = TRUE), 2))) 
+      `Tempera-ture affinity vascular plants` = paste0(round(mean(dat$T_pl_mean, na.rm = TRUE), 2), " ± ", round(sd(dat$T_pl_mean, na.rm = TRUE), 2)),
+      `Species richness short lived vascular plants` = paste0(round(mean(dat$SR_pl_sh_mean, na.rm = TRUE), 1), " ± ", round(sd(dat$SR_pl_sh_mean), 1)),
+      `Species richness long lived vascular plants` = paste0(round(mean(dat$SR_pl_lo_mean, na.rm = TRUE), 1), " ± ", round(sd(dat$SR_pl_lo_mean), 1)),
+    ) 
   ) %>% 
   mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
   arrange(`Elevational zone`) %>% 
@@ -139,7 +145,7 @@ gls(
   summary
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Full model: Notional elevation shift between species groups, land use types and across elevation ----
+# Full model, table 2: Notional elevation shift between species groups, land use types and across elevation ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
@@ -168,6 +174,10 @@ summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%
     align = "l",
     booktabs = T) %>% 
   kable_styling()
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Figure 2: Results from full model without non-significant interactions ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Function to get bootstrap sample
 getbootsample <- function(s) {
@@ -260,54 +270,27 @@ pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
 multiplot(forest, grassland, unused, cols = 3)
 dev.off()
 
-# Make table with predictions for each land-use type and elevational band
-# pred %>% 
-#   ungroup() %>% 
-#   filter(vascpl == 0) %>% 
-#   transmute(
-#     `Elevational zone` = HS,
-#     `Land use type` = land_use,
-#     `Notional elevation shift (bryo)` = No_shift,
-#     `Conf lo (bryo)` = lo,
-#     `Conf up (bryo)` = up,
-#   ) %>% 
-#   cbind(
-#     pred %>% 
-#       ungroup() %>% 
-#       filter(vascpl == 1) %>% 
-#       transmute(
-#         `Notional elevation shift (vascpl)` = No_shift,
-#         `Conf lo (vascpl)` = lo,
-#         `Conf up (vascpl)` = up,
-#       ) 
-#   ) %>% 
-#   arrange(`Elevational zone`, `Land use type`) %>% 
-#   kable(
-#     digits = 1,
-#     align = c("l", "l", rep("r", 6)),
-#     booktabs = T) %>% 
-#   kable_styling()
-
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table S2 ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-dat %>% 
-  group_by(HS) %>% 
+
+dat %>%
+  group_by(HS) %>%
   dplyr::summarise(
     shift_bryo = mean(T_mo_No_shift, na.rm = TRUE),
     lo_bryo = t.test(T_mo_No_shift)$conf.int[1],
-    up_bryo = t.test(T_mo_No_shift)$conf.int[2]) %>% 
+    up_bryo = t.test(T_mo_No_shift)$conf.int[2]) %>%
   left_join(
-    dat %>% 
-      group_by(HS) %>% 
+    dat %>%
+      group_by(HS) %>%
       dplyr::summarise(
         shift_pl = mean(T_pl_No_shift, na.rm = TRUE),
         lo_pl = t.test(T_pl_No_shift)$conf.int[1],
         up_pl = t.test(T_pl_No_shift)$conf.int[2])
-  ) %>% 
+  ) %>%
   mutate(
-    HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine"))) %>% 
-  arrange(HS) %>% 
+    HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine"))) %>%
+  arrange(HS) %>%
   kable(
     digits = 1,
     align = c("l", "l", rep("r", 6)),
@@ -317,6 +300,12 @@ dat %>%
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+getpvalue <- function(x) {
+  res <- paste("p =", format(round(x, 2), nsmall = 3))
+  if(res == "p = 0.000") res <- "p < 0.001"
+  res
+}
 
 f_gettrend <- function(eleband, lu, sg) {
   # Settings
@@ -345,7 +334,8 @@ f_gettrend <- function(eleband, lu, sg) {
     T_up = apply(simres, 1, quantile, probs = 0.975),
     eleband = eleband,
     lu = lu,
-    sg = sg
+    sg = sg,
+    pvalue = summary(mod)$coefficient[2, 5] %>% getpvalue
   )
 }
 
@@ -369,6 +359,15 @@ d$eleband[d$eleband == "montane"] <- "Montane"
 d$eleband[d$eleband == "subalpine"] <- "Subalpine"
 d$eleband[d$eleband == "alpine"] <- "Alpine"
 d <- d %>% mutate(eleband = factor(eleband, levels = rev(c("Colline", "Montane", "Subalpine", "Alpine"))))
+dd <- d %>% 
+  group_by(eleband, lu, sg) %>%
+  dplyr::summarize(
+    T = T[year == 2019] + 0.02,
+    pwert = first(pvalue), 
+    T_lo = as.numeric(NA), 
+    T_up = as.numeric(NA)
+  )
+dd$T[dd$lu == "Managed grasslands" & dd$sg == "Bryophytes" & dd$eleband == "Colline"] <- 3.44
 
 d %>% 
   ggplot(aes(x = year, y = T, ymin = T_lo, ymax = T_up, linetype = lu, col = lu, fill = lu)) +
@@ -378,12 +377,15 @@ d %>%
   labs(x = "Year", y = "Temperature affinity") +
   scale_fill_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
-  facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") +
-  theme(legend.position="bottom")
+  facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") + 
+  geom_text(aes(x = 2017, label = pwert), data = dd, size = 2.5) +
+  geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", alpha = 0.2, size = 2.5) +
+  theme(legend.position="bottom") 
 ggsave("Figures/main-figure.pdf", height = 8, width = 5.3)
 
+
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Temporal trends in termo., meso- and cryophilic species numbers ----
+# Table 3, Species richness models: Temporal trends in termo., meso- and cryophilic species numbers ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Table with number of species in the three groups
@@ -482,10 +484,10 @@ rbind(
   kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Notional elevational shift between life strategies ----
+# Life-strategy models: Notional elevational shift between life strategies ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-# Prepare data
+# Model for bryophytes
 d <- dat %>%
   dplyr::select(aID_STAO, ele, land_use, T_sh_No_shift, T_lo_No_shift) %>% 
   gather("strategy", "thermo", -c(aID_STAO, ele, land_use)) %>% 
@@ -493,9 +495,23 @@ d <- dat %>%
   left_join(dat %>% dplyr::select(aID_STAO, SR_mo_mean)) %>% 
   filter(!is.na(thermo)) %>% 
   mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
-
-# Apply main model
 mod <- lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) 
+summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+  kable(
+    digits = c(2, 2, 0, 3),
+    align = "l",
+    booktabs = T) %>% 
+  kable_styling()
+
+# Model for vascular plants
+d <- dat %>%
+  dplyr::select(aID_STAO, ele, land_use, T_sh_Pl_No_shift, T_lo_Pl_No_shift) %>% 
+  gather("strategy", "thermo", -c(aID_STAO, ele, land_use)) %>% 
+  mutate(strategy = factor(strategy, levels = c("T_sh_Pl_No_shift", "T_lo_Pl_No_shift"))) %>% 
+  left_join(dat %>% dplyr::select(aID_STAO, SR_pl_mean)) %>% 
+  filter(!is.na(thermo)) %>% 
+  mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
+mod <- lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_pl_mean), data = d) 
 summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
   kable(
     digits = c(2, 2, 0, 3),

@@ -12,6 +12,7 @@ library(BDM)
 library(simba)
 library(raster)
 library(readxl)
+library(openxlsx)
 
 # Connection to data base
 db <- src_sqlite(path = "~/Dropbox/3_Resourcen/BDM_DB/DB_BDM_2020_07_01.db", create = FALSE)
@@ -61,6 +62,8 @@ surveys <-
         AZ_pl_Termo = sum(T >= 4, na.rm = TRUE),
         AZ_pl_Meso = sum(T == 3, na.rm = TRUE),
         AZ_pl_Cryo = sum(T <= 2, na.rm = TRUE),
+        AZ_pl_sh = sum(T[!is.na(match(KS, c("rrr", "rrs", "crr")))], na.rm = TRUE),
+        AZ_pl_lo = sum(T[!is.na(match(KS, c("ccc", "ccr", "ccs")))], na.rm = TRUE),
         T_pl = round(mean(T, na.rm = TRUE), 2),
         T_pl_sh = mean(T[!is.na(match(KS, c("rrr", "rrs", "crr")))], na.rm = TRUE),
         T_pl_lo = mean(T[!is.na(match(KS, c("ccc", "ccr", "ccs")))], na.rm = TRUE)
@@ -84,7 +87,7 @@ surveys <-
         T_mo_lo = mean(T[GenTime > 6.6 & !is.na(GenTime)], na.rm = TRUE)
       )) %>% 
   as_tibble() %>% 
-  replace_na(list(AZ_pl = 0, AZ_pl_Termo = 0, AZ_pl_Meso = 0, AZ_pl_Cryo = 0,
+  replace_na(list(AZ_pl = 0, AZ_pl_Termo = 0, AZ_pl_Meso = 0, AZ_pl_Cryo = 0, AZ_pl_sh = 0, AZ_pl_lo = 0,
                   AZ_mo = 0, AZ_mo_Termo = 0, AZ_mo_Meso = 0, AZ_mo_Cryo = 0, AZ_mo_sh = 0, AZ_mo_lo = 0)) 
 
 # Add name of delarze habitat type
@@ -225,6 +228,8 @@ dat <- surveys %>%
     land_use = first(land_use),
     N_surveys = n(),
     SR_pl_mean = mean(AZ_pl, na.rm = TRUE),
+    SR_pl_sh_mean = mean(AZ_pl_sh, na.rm = TRUE),
+    SR_pl_lo_mean = mean(AZ_pl_lo, na.rm = TRUE),
     SR_pl_trend = get_trend(AZ_pl, year),
     T_pl_mean = mean(T_pl, na.rm = TRUE),
     T_pl_sh_mean = mean(T_pl_sh, na.rm = TRUE),
@@ -263,6 +268,40 @@ getturnover <- function(x, specdat) {
 # plants
 # dat$TU_mo <-  map_dbl(1:nrow(dat), getturnover, specdat = moss)
 # dat$TU_pl <-  map_dbl(1:nrow(dat), getturnover, specdat = plants)
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Prepare species list ----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# Bryophytes
+moss %>% 
+  dplyr::mutate(
+    Species = species,
+    `Species group` = as.integer(Komplex != "nein"),
+    `Temperature value` = T,
+    Short_lived = as.integer(GenTime <= 6.6 & !is.na(GenTime)),
+    Long_lived = as.integer(GenTime > 6.6 & !is.na(GenTime))
+  ) %>% 
+  group_by(Species, `Species group`, `Temperature value`, Short_lived, Long_lived) %>% 
+  dplyr::summarise(
+    N_records = n()
+  ) %>% 
+  openxlsx::write.xlsx(file = "Data-raw/Bryophytes_species_list.xlsx")
+
+# Vascular plants
+plants %>% 
+  dplyr::mutate(
+    Species = species,
+    `Species group` = as.integer(Komplex != "nein" & !is.na(Komplex)),
+    `Temperature value` = T,
+    Short_lived = as.integer(!is.na(match(KS, c("rrr", "rrs", "crr")))),
+    Long_lived = as.integer(!is.na(match(KS, c("ccc", "ccr", "ccs"))))
+  ) %>% 
+  group_by(Species, `Species group`, `Temperature value`, Short_lived, Long_lived) %>% 
+  dplyr::summarise(
+    N_records = n()
+  ) %>% 
+  openxlsx::write.xlsx(file = "Data-raw/Vascular_plant_species_list.xlsx")
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Summary statistics (Methods) ----
