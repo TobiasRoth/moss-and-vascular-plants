@@ -1,5 +1,5 @@
 # moss-and-vascular-plants
-Repository that contains all the files to reproduce the results presented in the manuscript "Major land plant lineages respond differently to climate warming". This manuscript is currently under review with [Ecography](https://onlinelibrary.wiley.com/journal/16000587).
+Repository that contains all the files to reproduce the results presented in the manuscript "Major land plant lineages respond differently to climate warming". 
 
 In this study we compare the notional elevation shift of mosses and vascular plants using BDM data.
 

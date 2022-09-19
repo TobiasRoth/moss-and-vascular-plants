@@ -40,10 +40,31 @@ dat <- dat %>%
     ele = (elevation - mean(dat$elevation[dat$HS == "colline"])) / 100
   )
 
+# Plot T value against elevation
+plmo <- dat %>% 
+  ggplot(aes(x = elevation, y = T_mo_mean)) +
+  geom_point(cex = 0.6) +
+  geom_smooth(method = lm) +
+  labs(x = "Elevation [m]", y = "Mean temperature affinitiy", title = "Bryophytes") +
+  ylim(1,5)
+plpl <- dat %>% 
+  ggplot(aes(x = elevation, y = T_pl_mean)) +
+  geom_point(cex = 0.6) +
+  geom_smooth(method = lm) +
+  labs(x = "Elevation [m]", y = "Mean temperature affinitiy", title = "Vascular plants") +
+  ylim(1,5)
+pdf("Figures/Temperature_affinities_elevation_shift.pdf", width = 10, height = 3.5)
+multiplot(plmo, plpl, cols = 2)
+dev.off()
+
 # Change in T value per m (for notional shift)
-moref <- -1 * coef(lm(T_mo_mean ~ elevation, data = dat))[2]
-plref <- -1 * coef(lm(T_pl_mean ~ elevation, data = dat))[2]
-tref <- 0.55 / (0.6 / 100)
+mod <- lm(T_mo_mean ~ elevation, data = dat)
+summary(mod)
+moref <- -1 * coef(mod)[2]
+mod <- lm(T_pl_mean ~ elevation, data = dat)
+summary(mod)
+plref <- -1 * coef(mod)[2]
+tref <- 82:110
 
 # Change Termophilisation to notional shift
 dat <- dat %>% 
@@ -56,8 +77,11 @@ dat <- dat %>%
     T_lo_No_shift = T_mo_lo_trend / moref
   )
 
+# Number of sites
+n_distinct(dat$aID_STAO)
+
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Table with sample size ----
+# Table with sample size (Table 1)----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 dat %>% 
@@ -85,7 +109,7 @@ dat %>%
   kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Table with descriptive statistics ----
+# Table with descriptive statistics (Table S3)----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 dat %>% 
@@ -145,7 +169,7 @@ gls(
   summary
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Full model, table 2: Notional elevation shift between species groups, land use types and across elevation ----
+# Full model, Table 2: Notional elevation shift between species groups, land use types and across elevation ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Prepare data
@@ -164,13 +188,20 @@ d <- dat %>%
     HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine")))
 
 # Apply main model
-lme(thermo ~ vascpl * ele * land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d) %>% 
-  anova
-mod <- lme(thermo ~ vascpl + ele + land_use + ele:vascpl, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+mod <- lme(thermo ~ vascpl * ele * land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
 anova(mod)
-summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+summary(mod)$tTable[, c("Value", "Std.Error", "p-value")] %>%  
   kable(
-    digits = c(2, 2, 0, 3),
+    digits = c(2, 2, 3),
+    align = "l",
+    booktabs = T) %>% 
+  kable_styling()
+
+mod <- lme(thermo ~ vascpl + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+anova(mod)
+summary(mod)$tTable[, c("Value", "Std.Error", "p-value")] %>%  
+  kable(
+    digits = c(2, 2, 3),
     align = "l",
     booktabs = T) %>% 
   kable_styling()
@@ -220,7 +251,7 @@ pred <- res[, 1:4] %>%
 forest <-pred %>% 
   filter(land_use == "forest") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
@@ -236,7 +267,7 @@ forest <-pred %>%
 grassland <-pred %>% 
   filter(land_use == "grassland") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
@@ -252,7 +283,7 @@ grassland <-pred %>%
 unused <-pred %>% 
   filter(land_use == "unmanaged open areas") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
   geom_point(position = position_dodge(width = 0.25)) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
@@ -271,7 +302,7 @@ multiplot(forest, grassland, unused, cols = 3)
 dev.off()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Table S2 ----
+# Table S4: notional shift for elevational zones ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 dat %>%
@@ -312,7 +343,7 @@ f_gettrend <- function(eleband, lu, sg) {
   nsim <- 1000
   sel <- ifelse(sg == "Vascular plants", "T_pl", "T_mo")
   startyear <- 2001
-  endyear <- 2019
+  endyear <- 2021
   
   # Data selection
   d <- surveys %>% 
@@ -484,7 +515,7 @@ rbind(
   kable_styling()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Life-strategy models: Notional elevational shift between life strategies ----
+# Life-strategy models (Table S5): Notional elevational shift between life strategies ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # Model for bryophytes
@@ -522,6 +553,7 @@ summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Plot: Notial elevation shift of short and long-lived species ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 #short-lived species
 d <- dat
 d$HS[d$HS == "colline"] <- "Colline"
@@ -571,7 +603,7 @@ d.res <- d.res %>% mutate(
 # Graphics
 ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
@@ -619,7 +651,7 @@ d.res <- d.res %>% mutate(
 # Graphics
 (p1 <- ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
@@ -667,7 +699,7 @@ d.res <- d.res %>% mutate(
 # Graphics
 (p2 <- ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
-  geom_abline(slope = 0, intercept = tref, col = "grey60", lwd = 0.8)  +
+  geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_point(position = position_dodge(width = 0.25), cex = 1.7) +
   geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +

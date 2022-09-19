@@ -9,14 +9,12 @@ library(RColorBrewer)
 library(knitr)
 library(kableExtra)
 library(BDM)
-library(simba)
 library(raster)
 library(readxl)
 library(openxlsx)
 
 # Connection to data base
-db <- src_sqlite(path = "~/Dropbox/3_Resourcen/BDM_DB/DB_BDM_2020_07_01.db", create = FALSE)
-db_neu <- src_sqlite(path = "~/Dropbox/3_Resourcen/BDM_DB/DB_BDM_2021_06_01.db", create = FALSE)
+db <- src_sqlite(path = "~/Dropbox/3_Ressourcen/BDM_DB/DB_BDM_2022_06_16.db", create = FALSE)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Export survey data from DB ----
@@ -54,7 +52,7 @@ surveys <-
   # Add vascular plant data:
   left_join(
     tbl(db, "Pl") %>% 
-      left_join(tbl(db_neu, "TRAITS_PL"), copy = TRUE) %>% 
+      left_join(tbl(db, "TRAITS_PL"), copy = TRUE) %>% 
       as_tibble() %>% 
       group_by(aID_KD) %>% 
       dplyr::summarise(
@@ -142,7 +140,10 @@ surveys$land_use[surveys$aID_STAO == 827182] <- "unused"
 
 # Remove plot with no species recorded
 surveys <- surveys %>% 
-  filter(aID_STAO != "797174")
+  filter(aID_STAO != "797174") %>% 
+  filter(aID_STAO != "569122") %>% 
+  filter(aID_STAO != "653218") %>% 
+  filter(aID_STAO != "707130")
 
 # Select sites with at least 3 surveys and no landuse change
 ausw <- surveys %>% 
@@ -189,7 +190,7 @@ plants <-
   tbl(db, "PL") %>% 
   left_join(tbl(db, "KD_Z9")) %>% 
   left_join(tbl(db, "ARTEN") %>% dplyr::select(aID_SP, Gattung, Art, Komplex)) %>%      
-  left_join(tbl(db_neu, "Traits_Pl"), copy = TRUE) %>% 
+  left_join(tbl(db, "Traits_Pl"), copy = TRUE) %>% 
   filter(!is.na(aID_SP)) %>% 
   as_tibble() %>% 
   filter(!is.na(match(aID_KD, surveys$aID_KD))) %>% 
@@ -270,10 +271,21 @@ getturnover <- function(x, specdat) {
 # dat$TU_pl <-  map_dbl(1:nrow(dat), getturnover, specdat = plants)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# Prepare species list ----
+# Prepare species lists ----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-# Bryophytes
+# Bryophytes (species list with aggregates)
+tbl(db, "Arten") %>% 
+  filter(Moos == 1) %>% 
+  as_tibble() %>% 
+  transmute(
+    species_ID = aID_SP, 
+    Genus = Gattung, 
+    Species = Art, 
+    Aggregate = str_replace(Komplex, "nein", "")) %>% 
+  openxlsx::write.xlsx(file = "Data-raw/Bryophytes_species_list_aggregates.xlsx")
+
+# Bryophytes (records)
 moss %>% 
   dplyr::mutate(
     Species = species,
@@ -282,13 +294,24 @@ moss %>%
     Short_lived = as.integer(GenTime <= 6.6 & !is.na(GenTime)),
     Long_lived = as.integer(GenTime > 6.6 & !is.na(GenTime))
   ) %>% 
-  group_by(Species, `Species group`, `Temperature value`, Short_lived, Long_lived) %>% 
+  group_by(Species, `Temperature value`, Short_lived, Long_lived) %>% 
   dplyr::summarise(
     N_records = n()
   ) %>% 
   openxlsx::write.xlsx(file = "Data-raw/Bryophytes_species_list.xlsx")
 
-# Vascular plants
+#  Vascular plants (species list with aggregates)
+tbl(db, "Arten") %>% 
+  filter(PL == 1) %>% 
+  as_tibble() %>% 
+  transmute(
+    species_ID = aID_SP, 
+    Genus = Gattung, 
+    Species = Art, 
+    Aggregate = str_replace(Komplex, "nein", "")) %>% 
+  openxlsx::write.xlsx(file = "Data-raw/Vascular_plant_species_list_aggregates.xlsx")
+
+# Vascular plants (temp)
 plants %>% 
   dplyr::mutate(
     Species = species,
@@ -297,7 +320,7 @@ plants %>%
     Short_lived = as.integer(!is.na(match(KS, c("rrr", "rrs", "crr")))),
     Long_lived = as.integer(!is.na(match(KS, c("ccc", "ccr", "ccs"))))
   ) %>% 
-  group_by(Species, `Species group`, `Temperature value`, Short_lived, Long_lived) %>% 
+  group_by(Species, `Temperature value`, Short_lived, Long_lived) %>% 
   dplyr::summarise(
     N_records = n()
   ) %>% 
