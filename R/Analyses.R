@@ -45,14 +45,16 @@ plmo <- dat %>%
   ggplot(aes(x = elevation, y = T_mo_mean)) +
   geom_point(cex = 0.6) +
   geom_smooth(method = lm) +
-  labs(x = "Elevation [m]", y = "Mean temperature affinitiy", title = "Bryophytes") +
+  labs(x = "Elevation [m]", y = "Community temperature index (CTI)", title = "Bryophytes") +
   ylim(1,5)
+lm(T_mo_mean ~ elevation, data =  dat) %>% summary
 plpl <- dat %>% 
   ggplot(aes(x = elevation, y = T_pl_mean)) +
   geom_point(cex = 0.6) +
   geom_smooth(method = lm) +
-  labs(x = "Elevation [m]", y = "Mean temperature affinitiy", title = "Vascular plants") +
+  labs(x = "Elevation [m]", y = "Community temperature index (CTI)", title = "Vascular plants") +
   ylim(1,5)
+lm(T_pl_mean ~ elevation, data =  dat) %>% summary
 pdf("Figures/Temperature_affinities_elevation_shift.pdf", width = 10, height = 3.5)
 multiplot(plmo, plpl, cols = 2)
 dev.off()
@@ -64,7 +66,7 @@ moref <- -1 * coef(mod)[2]
 mod <- lm(T_pl_mean ~ elevation, data = dat)
 summary(mod)
 plref <- -1 * coef(mod)[2]
-tref <- 82:110
+tref <- 63:84
 
 # Change Termophilisation to notional shift
 dat <- dat %>% 
@@ -84,29 +86,71 @@ n_distinct(dat$aID_STAO)
 # Table with sample size (Table 1)----
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+# Elevational zones and land use types
 dat %>% 
   group_by(`Elevational zone` = HS, `Land use type` = land_use) %>%
   dplyr::summarise(
-    `Number of plots` = n(),
+    `Nplots` = n(),
+    `Elevation (m)` = mean(elevation) %>% round(0),
     `N trend bryophytes` = sum(!is.na(T_mo_trend)),
+    `Mean NES bryo (m)` = mean(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES bryo (m)` = sd(T_mo_No_shift, na.rm = TRUE) %>% round(1),
     `N trend vascular plants` = sum(!is.na(T_pl_trend)),
-    `Mean elevation (m)` = mean(elevation)
-  ) %>% 
-  rbind(
-    tibble(
-      `Elevational zone` = "overall", 
-      `Land use type` = "-",
-      `Number of plots` = nrow(dat),
-      `N trend bryophytes` = sum(!is.na(dat$T_mo_trend)),
-      `N trend vascular plants` = sum(!is.na(dat$T_pl_trend)),
-      `Mean elevation (m)` = mean(dat$elevation))) %>% 
+    `Mean NES pl (m)` = mean(T_pl_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES pl (m)` = sd(T_pl_No_shift, na.rm = TRUE) %>% round(1)
+  )  %>% 
+  mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
+  mutate(`Land use type` = factor(`Land use type`, levels = c("grassland", "forest", "unused"))) %>% 
+  arrange(`Elevational zone`, `Land use type`) %>% 
+  as.data.frame()
+
+# Elevational zones
+dat %>% 
+  group_by(`Elevational zone` = HS) %>%
+  dplyr::summarise(
+    `Nplots` = n(),
+    `Elevation (m)` = mean(elevation) %>% round(0),
+    `N trend bryophytes` = sum(!is.na(T_mo_trend)),
+    `Mean NES bryo (m)` = mean(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES bryo (m)` = sd(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `N trend vascular plants` = sum(!is.na(T_pl_trend)),
+    `Mean NES pl (m)` = mean(T_pl_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES pl (m)` = sd(T_pl_No_shift, na.rm = TRUE) %>% round(1)
+  )  %>% 
   mutate(`Elevational zone` = factor(`Elevational zone`, levels = c("colline", "montane", "subalpine", "alpine", "overall"))) %>% 
   arrange(`Elevational zone`) %>% 
-  kable(
-    digits = 0,
-    align = c("l", "l", rep("r", 4)),
-    booktabs = T) %>% 
-  kable_styling()
+  as.data.frame()
+
+# land use types
+dat %>% 
+  group_by(`Land use type` = land_use) %>%
+  dplyr::summarise(
+    `Nplots` = n(),
+    `Elevation (m)` = mean(elevation) %>% round(0),
+    `N trend bryophytes` = sum(!is.na(T_mo_trend)),
+    `Mean NES bryo (m)` = mean(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES bryo (m)` = sd(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `N trend vascular plants` = sum(!is.na(T_pl_trend)),
+    `Mean NES pl (m)` = mean(T_pl_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES pl (m)` = sd(T_pl_No_shift, na.rm = TRUE) %>% round(1)
+  )  %>% 
+  mutate(`Land use type` = factor(`Land use type`, levels = c("grassland", "forest", "unused"))) %>% 
+  arrange(`Land use type`) %>% 
+  as.data.frame()
+
+# all
+dat %>% 
+  dplyr::summarise(
+    `Nplots` = n(),
+    `Elevation (m)` = mean(elevation) %>% round(0),
+    `N trend bryophytes` = sum(!is.na(T_mo_trend)),
+    `Mean NES bryo (m)` = mean(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES bryo (m)` = sd(T_mo_No_shift, na.rm = TRUE) %>% round(1),
+    `N trend vascular plants` = sum(!is.na(T_pl_trend)),
+    `Mean NES pl (m)` = mean(T_pl_No_shift, na.rm = TRUE) %>% round(1),
+    `SD NES pl (m)` = sd(T_pl_No_shift, na.rm = TRUE) %>% round(1)
+  )  %>% 
+  as.data.frame()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table with descriptive statistics (Table S3)----
@@ -187,6 +231,16 @@ d <- dat %>%
     land_use = factor(land_use, levels = c("grassland", "forest", "unused")),
     HS = factor(HS, levels = c("colline", "montane", "subalpine", "alpine")))
 
+# Apply linneage model
+mod <- lme(thermo ~ vascpl, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
+anova(mod)
+summary(mod)$tTable[, c("Value", "Std.Error", "p-value")] %>%  
+  kable(
+    digits = c(2, 2, 3),
+    align = "l",
+    booktabs = T) %>% 
+  kable_styling()
+
 # Apply main model
 mod <- lme(thermo ~ vascpl * ele * land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR), data = d)
 anova(mod)
@@ -259,7 +313,7 @@ forest <-pred %>%
   ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = "Forests") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine"),
@@ -275,7 +329,7 @@ grassland <-pred %>%
   ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = "Managed grasslands") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine", "alpine"),
@@ -286,19 +340,19 @@ unused <-pred %>%
   geom_abline(slope = 0, intercept = tref, col = "grey80", lwd = 0.8)  +
   geom_abline(slope = 0, intercept = 0, lty = 2) +
   geom_point(position = position_dodge(width = 0.25)) +
-  geom_errorbar(width = 0.2, position = position_dodge(width = 0.25)) +
+  geom_errorbar(width = 0.075, position = position_dodge(width = 0.25)) +
   scale_color_manual(values = c("#FF7F00", "#4DAF4A")) +
   ylim(-220, 420) +
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = "Unmanaged open areas") +
   scale_x_discrete(
     limits = c("alpine"),
     labels = c("Alpine"))
 
 pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
-multiplot(forest, grassland, unused, cols = 3)
+multiplot(grassland, forest, unused, cols = 3)
 dev.off()
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -405,7 +459,7 @@ d %>%
   geom_line(lty = 1, lwd = 1) +
   geom_ribbon(alpha = 0.5, lty = "blank") +
   scale_y_continuous(breaks = seq(0,5,0.1)) +
-  labs(x = "Year", y = "Temperature affinity") +
+  labs(x = "Year", y = "Community temperature index (CTI)") +
   scale_fill_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
   facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") + 
@@ -527,9 +581,9 @@ d <- dat %>%
   filter(!is.na(thermo)) %>% 
   mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
 mod <- lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_mo_mean), data = d) 
-summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+summary(mod)$tTable[, c("Value", "Std.Error", "p-value")] %>%  
   kable(
-    digits = c(2, 2, 0, 3),
+    digits = c(2, 2, 3),
     align = "l",
     booktabs = T) %>% 
   kable_styling()
@@ -543,9 +597,9 @@ d <- dat %>%
   filter(!is.na(thermo)) %>% 
   mutate(land_use = factor(land_use, levels = c("grassland", "forest", "unused")))
 mod <- lme(thermo ~ strategy + ele + land_use, random = ~ 1 | aID_STAO, weights = varPower(form = ~ SR_pl_mean), data = d) 
-summary(mod)$tTable[, c("Value", "Std.Error", "DF", "p-value")] %>%  
+summary(mod)$tTable[, c("Value", "Std.Error", "p-value")] %>%  
   kable(
-    digits = c(2, 2, 0, 3),
+    digits = c(2, 2, 3),
     align = "l",
     booktabs = T) %>% 
   kable_styling()
@@ -609,7 +663,7 @@ ggplot(d.res, aes(y = mean, x = HS, col = gr, ymin = lo, ymax = up)) +
   scale_color_manual(values = c("#00BFC4", "#C77CFF")) +
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = ""
   ) +
   theme(legend.position="bottom")
@@ -645,7 +699,7 @@ d.res_lo <- d %>%
 # Combine results of short- and long-lived spcies
 d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
 d.res <- d.res %>% mutate(
-  HS = factor(land_use, levels = c("Forests", "Managed\ngrasslands", "Unmanaged\nopen areas")),
+  HS = factor(land_use, levels = c("Managed\ngrasslands", "Forests", "Unmanaged\nopen areas")),
   gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
 
 # Graphics
@@ -658,7 +712,7 @@ d.res <- d.res %>% mutate(
   ylim(-210, 210) + 
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = "Bryophytes"
   ) +
   theme(legend.position="bottom"))
@@ -693,7 +747,7 @@ d.res_lo <- d %>%
 # Combine results of short- and long-lived spcies
 d.res <- dplyr::bind_rows(d.res_sh, d.res_lo)
 d.res <- d.res %>% mutate(
-  HS = factor(land_use, levels = c("Forests", "Managed\ngrasslands", "Unmanaged\nopen areas")),
+  HS = factor(land_use, levels = c("Managed\ngrasslands", "Forests", "Unmanaged\nopen areas")),
   gr = factor(gr, levels = c("Short-lived", "Long-lived"))) 
 
 # Graphics
@@ -706,7 +760,7 @@ d.res <- d.res %>% mutate(
   ylim(-170, 210) + 
   labs(
     x = "",
-    y = "Notional elevation shift\n[m per decade]",
+    y = "Notional elevation shift (NES)\n[m per decade]",
     title = "Vascular plants"
   ) +
   theme(legend.position="bottom"))
