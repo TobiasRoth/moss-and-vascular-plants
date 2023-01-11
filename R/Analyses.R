@@ -14,15 +14,18 @@ library(broom)
 library(knitr)
 library(kableExtra)
 library(lmerTest)
+library(patchwork)
 
 # Plot settings
 theme_set(
   theme_clean() +
     theme(
+      plot.background = element_rect(color = "white"),
+      plot.title = element_text(face = "plain", hjust = 0.5),
       legend.title = element_blank(), 
       plot.title.position = "plot",
       plot.caption.position =  "plot",
-      legend.position = "none", 
+      legend.position = "bottom",
       legend.background = element_rect(colour = "white"))
 )
 
@@ -292,7 +295,7 @@ for(s in 1:1000){
 pred <- res[, 1:4] %>% 
   mutate(
     land_use = fct_recode(land_use, `unmanaged open areas` = "unused"),
-    vascpl = factor(vascpl, levels = c(0, 1)),
+    vascpl = factor(vascpl, levels = c(0, 1), labels = c("Bryophytes", "Vascular plants")),
     av = apply(res[, 5:ncol(res)], 1, mean),
     lo = apply(res[, 5:ncol(res)], 1, quantile, probs = 0.025),
     up = apply(res[, 5:ncol(res)], 1, quantile, probs = 0.975)
@@ -333,7 +336,7 @@ grassland <-pred %>%
     title = "Managed grasslands") +
   scale_x_discrete(
     limits = c("colline", "montane", "subalpine", "alpine"),
-    labels = c("Colline", "Montane", "Sub-\nalpine", "Alpine"))
+    labels = c("Colline", "Montane", "Sub-\nalpine", "Alpine")) 
 unused <-pred %>% 
   filter(land_use == "unmanaged open areas") %>% 
   ggplot(aes(y = No_shift, x = HS, col = vascpl, ymin = lo, ymax = up)) +
@@ -351,9 +354,8 @@ unused <-pred %>%
     limits = c("alpine"),
     labels = c("Alpine"))
 
-pdf("Figures/Notional_elevation_shift.pdf", width = 10, height = 3.5)
-multiplot(grassland, forest, unused, cols = 3)
-dev.off()
+grassland + forest + unused + plot_layout(guides = "collect")
+ggsave("Figures/Notional_elevation_shift.pdf", width = 10, height = 4)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table S4: notional shift for elevational zones ----
@@ -443,7 +445,11 @@ d$eleband[d$eleband == "colline"] <- "Colline"
 d$eleband[d$eleband == "montane"] <- "Montane"
 d$eleband[d$eleband == "subalpine"] <- "Subalpine"
 d$eleband[d$eleband == "alpine"] <- "Alpine"
-d <- d %>% mutate(eleband = factor(eleband, levels = rev(c("Colline", "Montane", "Subalpine", "Alpine"))))
+d <- d %>% 
+  mutate(
+    eleband = factor(eleband, levels = rev(c("Colline", "Montane", "Subalpine", "Alpine"))),
+    lu = factor(lu, levels = c("Managed grasslands", "Forests", "Unmanaged open areas"))
+  )
 dd <- d %>% 
   group_by(eleband, lu, sg) %>%
   dplyr::summarize(
@@ -457,14 +463,14 @@ dd$T[dd$lu == "Managed grasslands" & dd$sg == "Bryophytes" & dd$eleband == "Coll
 d %>% 
   ggplot(aes(x = year, y = T, ymin = T_lo, ymax = T_up, linetype = lu, col = lu, fill = lu)) +
   geom_line(lty = 1, lwd = 1) +
-  geom_ribbon(alpha = 0.5, lty = "blank") +
+  geom_ribbon(alpha = 0.3, lty = "blank") +
   scale_y_continuous(breaks = seq(0,5,0.1)) +
   labs(x = "Year", y = "Community temperature index (CTI)") +
-  scale_fill_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
-  scale_color_manual(values = c("#66C2A5", "#A6D854", "#B3B3B3")) +
+  scale_fill_manual(values = c("#A6D854", "#66C2A5", "#B3B3B3")) +
+  scale_color_manual(values = c("#A6D854", "#66C2A5", "#B3B3B3")) +
   facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") + 
-  geom_text(aes(x = 2017, label = pwert), data = dd, size = 2.5) +
-  geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", alpha = 0.2, size = 2.5) +
+  geom_text(aes(x = 2017, label = pwert), data = dd, size = 2.5, fontface = 2) +
+  # geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", alpha = 0.4, size = 2.5, fontface = 2) +
   theme(legend.position="bottom") 
 ggsave("Figures/main-figure.pdf", height = 8, width = 5.3)
 
@@ -765,7 +771,6 @@ d.res <- d.res %>% mutate(
   ) +
   theme(legend.position="bottom"))
 
-pdf("Figures/Thermophilisation-short-long-lived_landuse.pdf", width = 10, height = 3.5)
-multiplot(p1, p2, cols = 2)
-dev.off()
+p1 + p2 + plot_layout(guides = "collect")
+ggsave("Figures/Thermophilisation-short-long-lived_landuse.pdf", width = 10, height = 4)
 
