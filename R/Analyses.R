@@ -474,6 +474,110 @@ d %>%
   theme(legend.position="bottom") 
 ggsave("Figures/main-figure.pdf", height = 8, width = 5.3)
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Main figure with data points----
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+getpvalue <- function(x) {
+  res <- paste("p =", format(round(x, 2), nsmall = 3))
+  if(res == "p = 0.000") res <- "p < 0.001"
+  res
+}
+
+f_gettrend <- function(eleband, lu, sg) {
+  
+  # Settings
+  sel <- ifelse(sg == "Vascular plants", "T_pl", "T_mo")
+  startyear <- 2001
+  endyear <- 2021
+  
+  # Data selection
+  d <- surveys %>% 
+    dplyr::filter(HS == paste(eleband) & land_use == paste(lu)) %>% 
+    mutate(yr = year - 2010)
+  d$T <- pull(d, sel)
+  
+  # Apply model
+  predyear <- (startyear:endyear) - 2010
+  mod <- lmer(T ~ yr + (1|aID_STAO), data = d)
+  
+  # Correct for differences in sites
+  d <- d %>% 
+    left_join(
+      d %>% 
+        group_by(aID_STAO) %>% 
+        dplyr::summarise(avT = mean(T, na.rm = TRUE))
+    ) %>% 
+    mutate(difT = T - avT)
+  avT = mean(d$T, na.rm = TRUE)
+  
+  # Calculate and return results
+  tibble(
+    year = startyear: endyear,
+    T = tapply(d$difT, d$year, mean, na.rm = TRUE) + avT,
+    T_lo = NA,
+    T_up = NA,
+    eleband = eleband,
+    lu = lu,
+    sg = sg,
+    pvalue = summary(mod)$coefficient[2, 5] %>% getpvalue
+  )
+
+}
+
+d <- map_dfr(
+  c("colline", "montane", "subalpine", "alpine"), f_gettrend, lu = "grassland", sg = "Bryophytes") %>% 
+  rbind(map_dfr(
+    c("colline", "montane", "subalpine", "alpine"), f_gettrend, lu = "grassland", sg = "Vascular plants")) %>%
+  rbind(map_dfr(
+    c("alpine"), f_gettrend, lu = "unused", sg = "Bryophytes")) %>%
+  rbind(map_dfr(
+    c("alpine"), f_gettrend, lu = "unused", sg = "Vascular plants")) %>%
+  rbind(map_dfr(
+    c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Bryophytes")) %>%
+  rbind(map_dfr(
+    c("colline", "montane", "subalpine"), f_gettrend, lu = "forest", sg = "Vascular plants")) 
+d$lu[d$lu == "unused"] <- "Unmanaged open areas"
+d$lu[d$lu == "grassland"] <- "Managed grasslands"
+d$lu[d$lu == "forest"] <- "Forests"
+d$eleband[d$eleband == "colline"] <- "Colline"
+d$eleband[d$eleband == "montane"] <- "Montane"
+d$eleband[d$eleband == "subalpine"] <- "Subalpine"
+d$eleband[d$eleband == "alpine"] <- "Alpine"
+d <- d %>% 
+  mutate(
+    eleband = factor(eleband, levels = rev(c("Colline", "Montane", "Subalpine", "Alpine"))),
+    lu = factor(lu, levels = c("Managed grasslands", "Forests", "Unmanaged open areas"))
+  )
+dd <- d %>% 
+  group_by(eleband, lu, sg) %>%
+  dplyr::summarize(
+    T = T[year == 2020] + 0.06,
+    pwert = first(pvalue), 
+    T_lo = as.numeric(NA), 
+    T_up = as.numeric(NA)
+  )
+dd$T[1] <- 2.07
+dd$T[3] <- 1.9
+dd$T[7] <- 2.67
+dd$T[14] <- 3.35
+dd$T[15] <- 3.15
+dd$T[16] <- 3.54
+
+d %>% 
+  ggplot(aes(x = year, y = T, linetype = lu, col = lu, fill = lu)) +
+  geom_line(lty = 1, lwd = 0.5) +
+  geom_point(cex = 1) +
+  geom_smooth(method = lm, lty = 1, lwd = 0.8) +
+  scale_y_continuous(breaks = seq(0,5,0.1)) +
+  labs(x = "Year", y = "Community temperature index (CTI)") +
+  scale_fill_manual(values = c("#A6D854", "#66C2A5", "#B3B3B3")) +
+  scale_color_manual(values = c("#A6D854", "#66C2A5", "#B3B3B3")) +
+  facet_rep_grid(eleband ~ sg, scales = "free_y", space = "free") + 
+  # geom_text(aes(x = 2017, label = pwert), data = dd, size = 2.5, fontface = 2) +
+  geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", size = 2.5, fontface = 1) +
+  theme(legend.position="bottom") 
+ggsave("Figures/main-figure_with_points.pdf", height = 8, width = 5.3)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table 3, Species richness models: Temporal trends in termo., meso- and cryophilic species numbers ----

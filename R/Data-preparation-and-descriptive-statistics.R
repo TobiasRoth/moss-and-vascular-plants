@@ -287,6 +287,7 @@ tbl(db, "Arten") %>%
 
 # Bryophytes (records)
 moss %>% 
+  left_join(surveys %>% transmute(aID_KD, HS)) %>% 
   dplyr::mutate(
     Species = species,
     `Species group` = as.integer(Komplex != "nein"),
@@ -294,10 +295,11 @@ moss %>%
     Short_lived = as.integer(GenTime <= 6.6 & !is.na(GenTime)),
     Long_lived = as.integer(GenTime > 6.6 & !is.na(GenTime))
   ) %>% 
-  group_by(Species, `Temperature value`, Short_lived, Long_lived) %>% 
+  group_by(Species, `Temperature value`, Short_lived, Long_lived, HS) %>% 
   dplyr::summarise(
     N_records = n()
   ) %>% 
+  spread(HS, N_records, fill = 0) %>% 
   openxlsx::write.xlsx(file = "Data-raw/Bryophytes_species_list.xlsx")
 
 #  Vascular plants (species list with aggregates)
@@ -313,6 +315,7 @@ tbl(db, "Arten") %>%
 
 # Vascular plants (temp)
 plants %>% 
+  left_join(surveys %>% transmute(aID_KD, HS)) %>% 
   dplyr::mutate(
     Species = species,
     `Species group` = as.integer(Komplex != "nein" & !is.na(Komplex)),
@@ -320,10 +323,11 @@ plants %>%
     Short_lived = as.integer(!is.na(match(KS, c("rrr", "rrs", "crr")))),
     Long_lived = as.integer(!is.na(match(KS, c("ccc", "ccr", "ccs"))))
   ) %>% 
-  group_by(Species, `Temperature value`, Short_lived, Long_lived) %>% 
+  group_by(Species, `Temperature value`, Short_lived, Long_lived, HS) %>% 
   dplyr::summarise(
     N_records = n()
   ) %>% 
+  spread(HS, N_records, fill = 0) %>% 
   openxlsx::write.xlsx(file = "Data-raw/Vascular_plant_species_list.xlsx")
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
