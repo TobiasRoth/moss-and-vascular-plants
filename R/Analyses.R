@@ -473,6 +473,7 @@ d %>%
   # geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", alpha = 0.4, size = 2.5, fontface = 2) +
   theme(legend.position="bottom") 
 ggsave("Figures/main-figure.pdf", height = 8, width = 5.3)
+resmainfig <- d
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Main figure with data points----
@@ -506,7 +507,7 @@ f_gettrend <- function(eleband, lu, sg) {
     left_join(
       d %>% 
         group_by(aID_STAO) %>% 
-        dplyr::summarise(avT = mean(T, na.rm = TRUE))
+        dplyr::summarise(avT = median(T, na.rm = TRUE))
     ) %>% 
     mutate(difT = T - avT)
   avT = mean(d$T, na.rm = TRUE)
@@ -558,17 +559,22 @@ dd <- d %>%
     T_up = as.numeric(NA)
   )
 dd$T[1] <- 2.07
+dd$T[4] <- 1.65
 dd$T[3] <- 1.9
 dd$T[7] <- 2.67
+dd$T[9] <- 3.5
+dd$T[13] <- 3.5
 dd$T[14] <- 3.35
 dd$T[15] <- 3.15
-dd$T[16] <- 3.54
+dd$T[16] <- 3.57
 
 d %>% 
   ggplot(aes(x = year, y = T, linetype = lu, col = lu, fill = lu)) +
   geom_line(lty = 1, lwd = 0.5) +
+  geom_ribbon(data = resmainfig, mapping = aes(ymin = T_lo, ymax = T_up), alpha = 0.3, lty = "blank") +
+  geom_line(data = resmainfig, mapping = aes(y = T), alpha = 1, lty = 1, lwd = 0.8) +
   geom_point(cex = 1) +
-  geom_smooth(method = lm, lty = 1, lwd = 0.8) +
+  # geom_smooth(method = lm, lty = 1, lwd = 0.8) +
   scale_y_continuous(breaks = seq(0,5,0.1)) +
   labs(x = "Year", y = "Community temperature index (CTI)") +
   scale_fill_manual(values = c("#A6D854", "#66C2A5", "#B3B3B3")) +
@@ -577,7 +583,7 @@ d %>%
   # geom_text(aes(x = 2017, label = pwert), data = dd, size = 2.5, fontface = 2) +
   geom_text(aes(x = 2017, label = pwert), data = dd, col = "black", size = 2.5, fontface = 1) +
   theme(legend.position="bottom") 
-ggsave("Figures/main-figure_with_points.pdf", height = 8, width = 5.3)
+ggsave("Figures/main-figure_with_points_neu.pdf", height = 8, width = 5.3)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Table 3, Species richness models: Temporal trends in termo., meso- and cryophilic species numbers ----

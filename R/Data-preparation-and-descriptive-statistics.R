@@ -5,6 +5,8 @@ rm(list = ls(all = TRUE))
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Libraries
 library(tidyverse)
+library(ggthemes)
+library(patchwork)
 library(RColorBrewer)
 library(knitr)
 library(kableExtra)
@@ -15,6 +17,19 @@ library(openxlsx)
 
 # Connection to data base
 db <- src_sqlite(path = "~/Dropbox/3_Ressourcen/BDM_DB/DB_BDM_2022_06_16.db", create = FALSE)
+
+# Plot settings
+theme_set(
+  theme_clean() +
+    theme(
+      plot.background = element_rect(color = "white"),
+      plot.title = element_text(face = "plain", hjust = 0.5),
+      legend.title = element_blank(), 
+      plot.title.position = "plot",
+      plot.caption.position =  "plot",
+      legend.position = "bottom",
+      legend.background = element_rect(colour = "white"))
+)
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Export survey data from DB ----
@@ -412,6 +427,57 @@ mean(is.na(dat$T_pl_trend))
 # Number of sites with estimates of thermophilsation
 sum(!is.na(dat$T_mo_trend))
 sum(!is.na(dat$T_pl_trend))
+
+# Number of observers
+tbl(db, "KD_Z9") %>% 
+  filter(Aufnahmetyp == "BDM_LANAG_Normalaufnahme_Z9" | Aufnahmetyp == "Normalaufnahme_Z9") %>% 
+  filter(!is.na(yearPl) & yearPl <= 2021) %>% 
+  pull(BearbeiterZ9) %>% n_distinct()
+tbl(db, "KD_Z9") %>% 
+  filter(Aufnahmetyp == "BDM_LANAG_Normalaufnahme_Z9" | Aufnahmetyp == "Normalaufnahme_Z9") %>% 
+  filter(!is.na(yearPl) & yearPl <= 2021) %>% 
+  pull(BestimmerMoos) %>% table
+
+# Number of recorded species per 5 year Interval
+tplants <- plants %>% left_join(surveys %>% transmute(aID_KD, year)) 
+tmoss <- moss %>% left_join(surveys %>% transmute(aID_KD, year)) 
+tt <- tibble(
+  startyear = seq(2001, 2021, 1),
+  endyear = seq(2001, 2021, 1),
+  vascplants = 0,
+  bryophytes = 0
+)
+for(i in 1:nrow(tt)) {
+  tt[i, "vascplants"] <- tplants %>% filter(year >= tt$startyear[i] & year <= tt$endyear[i]) %>% pull(aID_SP) %>% n_distinct()
+  tt[i, "bryophytes"] <- tmoss %>% filter(year >= tt$startyear[i] & year <= tt$endyear[i]) %>% pull(aID_SP) %>% n_distinct()
+}
+p1 <- tt %>% 
+  ggplot(aes(x = startyear, y = vascplants)) +
+  geom_smooth(method = lm) +
+  geom_point() +
+  ylim(0, NA) +
+  # scale_x_continuous(breaks = tt$startyear, labels = paste(tt$startyear, "-", tt$endyear), limits = c(2000, 2020)) +
+  xlim(2000, 2025) +
+  labs(
+    title = "Vascular plants",
+    x = "",
+    y = "Number of vascular plant taxa"
+  )
+p2 <- tt %>% 
+  ggplot(aes(x = startyear, y = bryophytes)) +
+  geom_smooth(method = lm) +
+  geom_point() +
+  ylim(0, NA) +
+  # scale_x_continuous(breaks = tt$startyear, labels = paste(tt$startyear, "-", tt$endyear), limits = c(2000, 2020)) +
+  xlim(2000, 2025) +
+  labs(
+    title = "Bryophytes",
+    x = "",
+    y = "Number of bryophyte taxa"
+  )
+p2 + p1
+ggsave("Figures/Number_recorded_species.pdf", width = 10, height = 4)
+openxlsx::write.xlsx(tt, file = "Figures/Number_recorded_species.xlsx")
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Make map with location of study plots ----
